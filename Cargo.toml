@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = [
+    "brewer_term",
+    "brewer_core"
+]
+
+default-members = [
+    "brewer_term"
+]
