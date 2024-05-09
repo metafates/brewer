@@ -9,11 +9,17 @@ fn run() -> anyhow::Result<()> {
 
     let state = engine.cache_or_latest()?;
 
-    for (_, f) in state.formulae.all.iter() {
-        if state.formulae.installed.contains_key(&f.name) {
-            println!("{} {}", f.name, f.versions.stable);
-            println!("{}", f.desc);
+    for (_, f) in state.formulae.installed.iter() {
+        println!("{} {}", f.upstream.base.name, f.receipt.source.version());
+        println!("{}", f.upstream.base.desc);
+
+        for e in f.upstream.executables.iter() {
+            println!("Provides {}", e);
         }
+
+        println!();
+        println!();
+        println!();
 
         // if f.receipt.installed_on_request {
         //     println!("{} {}", f.upstream.name, f.receipt.source.version());

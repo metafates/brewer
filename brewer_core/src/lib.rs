@@ -22,6 +22,8 @@ const DEFAULT_BREW_PREFIX: &str = "/usr/local";
 #[cfg(target_os = "linux")]
 const DEFAULT_BREW_PREFIX: &str = "/home/linuxbrew/.linuxbrew";
 
+const DEFAULT_BREW_BIN_REGISTRY_URL: &str = "https://raw.githubusercontent.com/Homebrew/homebrew-command-not-found/master/executables.txt";
+
 #[derive(Builder, Clone)]
 pub struct Brew {
     path: PathBuf,
@@ -44,8 +46,50 @@ impl Brew {
         Command::new(self.path.clone())
     }
 
+    pub fn executables(&self) -> anyhow::Result<formula::Executables> {
+        let body = reqwest::blocking::get(DEFAULT_BREW_BIN_REGISTRY_URL)?.text()?;
+        let mut store = formula::Executables::new();
+
+        for line in body.lines().filter(|l| !l.is_empty()) {
+            let Some((lhs, rhs)) = line.split_once(':') else {
+                continue;
+            };
+
+            let Some(index) = lhs.find('(') else {
+                continue;
+            };
+
+            let name = &lhs[..index];
+            let executables: HashSet<String> = rhs.split_whitespace().map(|s| s.to_string()).collect();
+
+            store.insert(name.to_string(), executables);
+        }
+
+        Ok(store)
+    }
+
     pub fn state(&self) -> anyhow::Result<State<formula::State, cask::State>> {
         let all = self.eval_all()?;
+        let executables = self.executables()?;
+
+        let all: State<formula::Store, cask::Store> = State {
+            formulae: all.formulae.into_iter().map(|(k, base)| {
+                let executables = if let Some(e) = executables.get(&k) {
+                    e.clone()
+                } else {
+                    HashSet::new()
+                };
+
+                (k, formula::Formula {
+                    base,
+                    executables,
+                })
+            }).collect(),
+            casks: all.casks.into_iter().map(|(k, base)| {
+                (k, cask::Cask { base })
+            }).collect(),
+        };
+
         let installed = self.eval_installed(&all)?;
 
         Ok(State {
@@ -76,7 +120,7 @@ impl Brew {
             };
 
             installed.insert(name, cask::installed::Cask {
-                cask: cask.clone(),
+                upstream: cask.clone(),
                 versions,
             });
         }
@@ -180,7 +224,7 @@ impl Brew {
         name.starts_with('.')
     }
 
-    pub fn eval_all(&self) -> anyhow::Result<State<formula::Store, cask::Store>> {
+    pub fn eval_all(&self) -> anyhow::Result<State<formula::base::Store, cask::base::Store>> {
         let mut command = self.brew();
 
         let output = command
@@ -191,19 +235,19 @@ impl Brew {
 
         #[derive(Deserialize)]
         struct Result {
-            formulae: Vec<formula::Formula>,
-            casks: Vec<cask::Cask>,
+            formulae: Vec<formula::base::Formula>,
+            casks: Vec<cask::base::Cask>,
         }
 
         let result: Result = serde_json::from_slice(output.stdout.as_slice())?;
 
-        let formulae: formula::Store = result
+        let formulae: formula::base::Store = result
             .formulae
             .into_iter()
             .map(|f| (f.name.clone(), f))
             .collect();
 
-        let casks: cask::Store = result
+        let casks: cask::base::Store = result
             .casks
             .into_iter()
             .map(|c| (c.token.clone(), c))

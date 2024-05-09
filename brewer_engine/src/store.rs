@@ -13,10 +13,9 @@ pub struct Store {
 pub type State = models::State<models::formula::Store, models::cask::Store>;
 
 impl Store {
-    const META_BUCKET: &'static str = "meta";
+    const UPDATE_BUCKET: &'static str = "update";
     const STATE_BUCKET: &'static str = "state";
 
-    const LAST_UPDATE_KEY: &'static str = "last-update";
     const STATE_KEY: &'static str = "state";
 
     pub fn open(path: &Path) -> anyhow::Result<Store> {
@@ -28,9 +27,9 @@ impl Store {
     pub fn last_update(&self) -> anyhow::Result<Option<NaiveDateTime>> {
         let tx = self.db.tx(false)?;
 
-        match tx.get_bucket(Self::META_BUCKET) {
+        match tx.get_bucket(Self::UPDATE_BUCKET) {
             Ok(bucket) => {
-                let Some(data) = bucket.get(Self::LAST_UPDATE_KEY) else {
+                let Some(data) = bucket.get(Self::STATE_KEY) else {
                     return Ok(None);
                 };
 
@@ -45,12 +44,12 @@ impl Store {
     }
 
     fn commit_update(tx: Tx) -> anyhow::Result<()> {
-        let bucket = tx.get_or_create_bucket(Self::META_BUCKET)?;
+        let bucket = tx.get_or_create_bucket(Self::UPDATE_BUCKET)?;
 
         let now = Utc::now().naive_utc();
         let now_bytes = rmp_serde::to_vec(&now)?;
 
-        bucket.put(Self::LAST_UPDATE_KEY, now_bytes)?;
+        bucket.put(Self::STATE_KEY, now_bytes)?;
 
         tx.commit()?;
 
