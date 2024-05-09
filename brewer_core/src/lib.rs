@@ -4,6 +4,7 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::process::Command;
 
+use derive_builder::Builder;
 use serde::Deserialize;
 
 use crate::models::*;
@@ -21,6 +22,7 @@ const DEFAULT_BREW_PREFIX: &str = "/usr/local";
 #[cfg(target_os = "linux")]
 const DEFAULT_BREW_PREFIX: &str = "/home/linuxbrew/.linuxbrew";
 
+#[derive(Builder, Clone)]
 pub struct Brew {
     path: PathBuf,
     prefix: PathBuf,

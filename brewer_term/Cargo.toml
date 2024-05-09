@@ -3,6 +3,10 @@ name = "brewer_term"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "brewer"
+path = "src/main.rs"
+
 [dependencies]
 anyhow = "1.0.83"
 brewer_engine = { path = "../brewer_engine" }

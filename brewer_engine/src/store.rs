@@ -5,6 +5,7 @@ use jammdb::Tx;
 
 use brewer_core::models;
 
+#[derive(Clone)]
 pub struct Store {
     db: jammdb::DB,
 }
@@ -24,7 +25,7 @@ impl Store {
         })
     }
 
-    pub fn last_update(&mut self) -> anyhow::Result<Option<NaiveDateTime>> {
+    pub fn last_update(&self) -> anyhow::Result<Option<NaiveDateTime>> {
         let tx = self.db.tx(false)?;
 
         match tx.get_bucket(Self::META_BUCKET) {
@@ -56,7 +57,7 @@ impl Store {
         Ok(())
     }
 
-    pub fn get_state(&mut self) -> anyhow::Result<Option<State>> {
+    pub fn get_state(&self) -> anyhow::Result<Option<State>> {
         let tx = self.db.tx(false)?;
 
         match tx.get_bucket(Self::STATE_BUCKET) {

@@ -1,10 +1,11 @@
 use std::path::PathBuf;
 
 fn run() -> anyhow::Result<()> {
-    let mut engine = brewer_engine::Engine::new(
-        brewer_engine::store::Store::open(PathBuf::from("brewer.db").as_path())?,
-        brewer_core::Brew::default(),
-    );
+    let store = brewer_engine::store::Store::open(PathBuf::from("brewer.db").as_path())?;
+
+    let mut engine = brewer_engine::EngineBuilder::default()
+        .store(store)
+        .build()?;
 
     let state = engine.cache_or_latest()?;
 

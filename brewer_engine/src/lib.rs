@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use chrono::Utc;
+use derive_builder::Builder;
 
 use brewer_core::{Brew, models};
 
@@ -10,10 +11,14 @@ pub mod store;
 
 pub type State = models::State<models::formula::State, models::cask::State>;
 
-
+#[derive(Builder)]
 pub struct Engine {
     store: Store,
+
+    #[builder(default)]
     brew: Brew,
+
+    #[builder(default = "Duration::from_secs(60 * 24 * 12)")]
     cache_duration: Duration,
 }
 
@@ -40,7 +45,7 @@ impl Engine {
         }
     }
 
-    pub fn cache(&mut self) -> anyhow::Result<Option<State>> {
+    pub fn cache(&self) -> anyhow::Result<Option<State>> {
         let Some(all) = self.store.get_state()? else {
             return Ok(None);
         };
@@ -61,7 +66,7 @@ impl Engine {
         Ok(Some(state))
     }
 
-    pub fn cache_expired(&mut self) -> anyhow::Result<bool> {
+    pub fn cache_expired(&self) -> anyhow::Result<bool> {
         let last_update = self.store.last_update()?;
 
         match last_update {
@@ -83,7 +88,7 @@ impl Engine {
         Ok(())
     }
 
-    pub fn latest(&mut self) -> anyhow::Result<State> {
+    pub fn latest(&self) -> anyhow::Result<State> {
         let state = self.brew.state()?;
 
         Ok(state)
