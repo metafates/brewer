@@ -1,5 +1,11 @@
 use std::path::PathBuf;
 
+use clap::Parser;
+
+use crate::cli::Cli;
+
+mod cli;
+
 fn run() -> anyhow::Result<()> {
     let store = brewer_engine::store::Store::open(PathBuf::from("brewer.db").as_path())?;
 
@@ -9,26 +15,22 @@ fn run() -> anyhow::Result<()> {
 
     let state = engine.cache_or_latest()?;
 
-    for (_, f) in state.formulae.installed.iter() {
-        println!("{} {}", f.upstream.base.name, f.receipt.source.version());
-        println!("{}", f.upstream.base.desc);
+    let c = Cli::parse();
 
-        for e in f.upstream.executables.iter() {
-            println!("Provides {}", e);
+    match c.command {
+        cli::Commands::Which(which) => {
+            for (_, f) in state.formulae.all {
+                if f.executables.contains(&which.name) {
+                    println!("{} {}", f.base.name, f.base.versions.stable);
+                    println!("{}", f.base.desc);
+
+                    println!();
+                }
+            }
+
+            Ok(())
         }
-
-        println!();
-        println!();
-        println!();
-
-        // if f.receipt.installed_on_request {
-        //     println!("{} {}", f.upstream.name, f.receipt.source.version());
-        //     println!("{}", f.upstream.desc);
-        //     println!();
-        // }
     }
-
-    Ok(())
 }
 
 fn main() {
