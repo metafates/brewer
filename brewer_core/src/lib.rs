@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 use crate::models::*;
 
-mod models;
+pub mod models;
 
 const DEFAULT_BREW_PATH: &str = "brew";
 
@@ -108,9 +108,9 @@ impl Brew {
 
                 let name = name.to_string_lossy().to_string();
 
-                if name == ".metadata" {
+                if Self::is_dotfile(&name) {
                     continue;
-                };
+                }
 
                 versions.insert(name);
             }
@@ -153,7 +153,7 @@ impl Brew {
 
             let name = name.to_string_lossy().to_string();
 
-            if name == ".keepme" {
+            if Self::is_dotfile(&name) {
                 continue;
             }
 
@@ -172,6 +172,10 @@ impl Brew {
         }
 
         Ok(store)
+    }
+
+    fn is_dotfile(name: &str) -> bool {
+        name.starts_with('.')
     }
 
     pub fn eval_all(&self) -> anyhow::Result<State<formula::Store, cask::Store>> {

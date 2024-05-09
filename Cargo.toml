@@ -2,7 +2,8 @@
 resolver = "2"
 members = [
     "brewer_term",
-    "brewer_core"
+    "brewer_core",
+    "brewer_engine",
 ]
 
 default-members = [

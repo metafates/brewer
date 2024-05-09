@@ -5,4 +5,5 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.83"
-brewer_core = {path = "../brewer_core"}
+brewer_engine = { path = "../brewer_engine" }
+brewer_core = { path = "../brewer_core" }

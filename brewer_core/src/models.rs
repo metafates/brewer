@@ -1,3 +1,6 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Deserialize, Serialize, Clone)]
 pub struct State<F, C> {
     pub formulae: F,
     pub casks: C,
@@ -6,11 +9,11 @@ pub struct State<F, C> {
 pub mod formula {
     use std::collections::HashSet;
 
-    use serde::Deserialize;
+    use serde::{Deserialize, Serialize};
 
     use crate::models::keg;
 
-    #[derive(Default, Deserialize, Clone)]
+    #[derive(Serialize, Deserialize, Clone)]
     pub struct Formula {
         pub name: String,
         pub tap: String,
@@ -18,17 +21,28 @@ pub mod formula {
 
         #[serde(default)]
         pub aliases: HashSet<String>,
+
+        pub versions: Versions,
+    }
+
+    #[derive(Serialize, Deserialize, Clone)]
+    pub struct Versions {
+        pub stable: String,
+        pub head: Option<String>,
     }
 
     pub type State = keg::State<Formula, installed::Formula>;
     pub type Store = keg::Store<Formula>;
 
     pub mod installed {
+        use serde::{Deserialize, Serialize};
+
         use crate::models::formula::receipt;
         use crate::models::keg;
 
         pub type Store = keg::Store<Formula>;
 
+        #[derive(Serialize, Deserialize, Clone)]
         pub struct Formula {
             pub upstream: super::Formula,
             pub receipt: receipt::Receipt,
@@ -36,20 +50,20 @@ pub mod formula {
     }
 
     pub mod receipt {
-        use serde::Deserialize;
+        use serde::{Deserialize, Serialize};
 
         use crate::models::keg;
 
         pub type Store = keg::Store<Receipt>;
 
-        #[derive(Deserialize)]
+        #[derive(Serialize, Deserialize, Clone)]
         pub struct Receipt {
             pub source: Source,
             pub installed_as_dependency: bool,
             pub installed_on_request: bool,
         }
 
-        #[derive(Deserialize)]
+        #[derive(Serialize, Deserialize, Clone)]
         pub struct Source {
             pub spec: Spec,
             pub versions: Versions,
@@ -64,7 +78,7 @@ pub mod formula {
             }
         }
 
-        #[derive(Deserialize)]
+        #[derive(Serialize, Deserialize, Clone)]
         #[serde(rename_all = "camelCase")]
         pub enum Spec {
             Stable,
@@ -72,7 +86,7 @@ pub mod formula {
         }
 
 
-        #[derive(Deserialize)]
+        #[derive(Serialize, Deserialize, Clone)]
         pub struct Versions {
             pub stable: String,
             pub head: Option<String>,
@@ -83,11 +97,11 @@ pub mod formula {
 pub mod cask {
     use std::collections::HashSet;
 
-    use serde::Deserialize;
+    use serde::{Deserialize, Serialize};
 
     use crate::models::keg;
 
-    #[derive(Default, Deserialize, Clone)]
+    #[derive(Default, Serialize, Deserialize, Clone)]
     pub struct Cask {
         pub token: String,
         pub tap: String,
@@ -102,11 +116,14 @@ pub mod cask {
     pub mod installed {
         use std::collections::HashSet;
 
+        use serde::{Deserialize, Serialize};
+
         use crate::models::keg;
 
         pub type Store = keg::Store<Cask>;
         pub type VersionsStore = keg::Store<HashSet<String>>;
 
+        #[derive(Serialize, Deserialize, Clone)]
         pub struct Cask {
             pub cask: super::Cask,
             pub versions: HashSet<String>,
@@ -117,6 +134,9 @@ pub mod cask {
 pub mod keg {
     use std::collections::HashMap;
 
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Serialize, Deserialize)]
     pub struct State<A, I> {
         pub all: Store<A>,
         pub installed: Store<I>,

@@ -5,6 +5,7 @@
       <sourceFolder url="file://$MODULE_DIR$/brewer_core/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/brewer_term/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/brewer_engine/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/brewer_core/target" />
       <excludeFolder url="file://$MODULE_DIR$/brewer_term/target" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
