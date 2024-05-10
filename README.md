@@ -5,6 +5,8 @@ An extremly fast homebrew overlay with extra features.
 This is a WIP, alpha, early-stage, etc. project. A lot is missing and bugs are
 expected.
 
+[![asciicast](https://asciinema.org/a/658721.svg)](https://asciinema.org/a/658721)
+
 ## Features
 
 - Fuzzy formulae/cask search with an embedded [skim] ([fzf] rust alternative)
