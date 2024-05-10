@@ -39,7 +39,7 @@ pub enum Commands {
 pub mod which {
     use std::borrow::Cow;
     use std::collections::HashMap;
-    use std::io::{BufWriter, Write};
+    use std::io::{BufWriter, IsTerminal, Write};
     use std::sync::Arc;
 
     use clap::Parser;
@@ -47,6 +47,7 @@ pub mod which {
     use skim::prelude::{SkimOptionsBuilder, unbounded};
 
     use brewer_core::models;
+    use brewer_core::models::formula::Formula;
     use brewer_engine::State;
 
     use crate::cli::info_formula;
@@ -58,35 +59,41 @@ pub mod which {
 
     impl Which {
         pub fn run(&self, state: State) -> anyhow::Result<bool> {
-            let Some(name) = &self.name else {
-                self.run_skim(state)?;
-                return Ok(true);
+            let formulae = match &self.name {
+                Some(name) => {
+                    state
+                        .formulae
+                        .all
+                        .into_iter()
+                        .filter_map(|(_, f)| {
+                            if f.executables.contains(name) {
+                                Some(f)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect()
+                }
+                None => self.run_skim(state)?
             };
 
-            let suitable: Vec<_> = state
-                .formulae
-                .all
-                .into_iter()
-                .filter_map(|(_, f)| {
-                    if f.executables.contains(name) {
-                        Some(f)
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            if suitable.is_empty() {
+            if formulae.is_empty() {
                 return Ok(false);
             }
 
             let mut buf = BufWriter::new(std::io::stdout());
 
-            for (i, f) in suitable.iter().enumerate() {
-                info_formula(&mut buf, f, None)?;
+            if std::io::stdout().is_terminal() {
+                for (i, f) in formulae.iter().enumerate() {
+                    info_formula(&mut buf, f, None)?;
 
-                if i != suitable.len() - 1 {
-                    writeln!(buf)?;
+                    if i != formulae.len() - 1 {
+                        writeln!(buf)?;
+                    }
+                }
+            } else {
+                for f in formulae.into_iter() {
+                    writeln!(buf, "{}", f.base.name)?;
                 }
             }
 
@@ -96,7 +103,7 @@ pub mod which {
         }
 
 
-        fn run_skim(&self, state: State) -> anyhow::Result<bool> {
+        fn run_skim(&self, state: State) -> anyhow::Result<Vec<Formula>> {
             let mut executables: HashMap<String, models::formula::Store> = HashMap::new();
 
             for f in state.formulae.all.values() {
@@ -138,30 +145,17 @@ pub mod which {
                 .map(|out| out.selected_items)
                 .unwrap_or_default();
 
-            let selected_items: Vec<_> = selected_items
-                .iter()
-                .map(|selected_item| (**selected_item).as_any().downcast_ref::<Executable>().unwrap().to_owned())
-                .collect();
+            let mut formulae = Vec::new();
 
-            let mut buf = BufWriter::new(std::io::stdout());
+            for item in selected_items {
+                let item = item.as_any().downcast_ref::<Executable>().unwrap();
 
-            for (i, executable) in selected_items.iter().enumerate() {
-                for (j, formula) in executable.provided_by.values().enumerate() {
-                    info_formula(&mut buf, formula, None)?;
-
-                    if j != executable.provided_by.len() - 1 {
-                        writeln!(buf)?;
-                    }
-                }
-
-                if i != selected_items.len() - 1 {
-                    writeln!(buf)?;
+                for formula in item.provided_by.values() {
+                    formulae.push(formula.clone());
                 }
             }
 
-            buf.flush()?;
-
-            Ok(true)
+            Ok(formulae)
         }
     }
 
@@ -331,9 +325,20 @@ fn info_formula(mut buf: impl Write, formula: &models::formula::Formula, install
         writeln!(buf)?;
         write!(buf, "Provides")?;
 
-        for e in formula.executables.iter() {
-            write!(buf, " {}", e.bold().purple())?;
+        const LIMIT: usize = 5;
+
+        if formula.executables.len() > LIMIT {
+            for e in formula.executables.iter().take(LIMIT) {
+                write!(buf, " {}", e.bold().purple())?;
+            }
+
+            write!(buf, " and {} more", formula.executables.len() - LIMIT)?;
+        } else {
+            for e in formula.executables.iter() {
+                write!(buf, " {}", e.bold().purple())?;
+            }
         }
+
 
         writeln!(buf)?;
     }
