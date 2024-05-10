@@ -212,11 +212,13 @@ pub struct Update {}
 
 impl Update {
     pub fn run(&self, mut engine: Engine) -> anyhow::Result<()> {
+        println!("Updating the database, this will take some time");
+
         let state = engine.latest()?;
 
         engine.update_cache(&state)?;
 
-        println!("Updated, found {} formulae and {} casks", state.formulae.all.len(), state.casks.all.len());
+        println!("Database updated, found {} formulae and {} casks", state.formulae.all.len(), state.casks.all.len());
 
         Ok(())
     }

@@ -35,6 +35,9 @@ impl Engine {
         let cache = self.cache()?;
 
         if self.cache_expired()? || cache.is_none() {
+            // TODO: replace this logger
+            println!("Updating the cache, this will take some time...");
+
             let latest = self.latest()?;
 
             self.update_cache(&latest)?;

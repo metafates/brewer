@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::process::exit;
 
 use clap::Parser;
@@ -51,7 +50,13 @@ fn run() -> anyhow::Result<bool> {
 }
 
 fn get_engine() -> anyhow::Result<Engine> {
-    let store = brewer_engine::store::Store::open(PathBuf::from("brewer.db").as_path())?;
+    let db_path = if let Some(dir) = dirs::cache_dir() {
+        dir.join("brewer.db")
+    } else {
+        "brewer.db".into()
+    };
+
+    let store = brewer_engine::store::Store::open(db_path.as_path())?;
 
     let engine = brewer_engine::EngineBuilder::default()
         .store(store)
