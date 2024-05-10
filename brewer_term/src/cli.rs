@@ -25,12 +25,14 @@ pub enum Commands {
     Update(Update),
 
     /// List installed formulae and casks
+    #[clap(alias = "ls")]
     List(List),
 
     /// Show information about formula or cask
     Info(Info),
 
     /// Search for formulae and casks
+    #[clap(alias = "s")]
     Search(search::Search),
 }
 
@@ -117,6 +119,7 @@ pub mod which {
             let options = SkimOptionsBuilder::default()
                 .multi(true)
                 .preview(Some("")) // preview should be specified to enable preview window
+                .preview_window(Some("60%"))
                 .header(Some("Executables"))
                 .build()?;
 
@@ -295,16 +298,16 @@ impl Info {
                 return Ok(false);
             };
 
-            info_cask(buf, cask)?;
+            info_cask(buf, cask, state.casks.installed.get(&self.name))?;
 
             return Ok(true);
         }
 
         match state.formulae.all.get(&self.name) {
-            Some(formula) => info_formula(buf, formula)?,
+            Some(formula) => info_formula(buf, formula, state.formulae.installed.get(&self.name))?,
             None => {
                 match state.casks.all.get(&self.name) {
-                    Some(cask) => info_cask(buf, cask)?,
+                    Some(cask) => info_cask(buf, cask, state.casks.installed.get(&self.name))?,
                     None => return Ok(false)
                 }
             }
@@ -314,9 +317,18 @@ impl Info {
     }
 }
 
-fn info_formula(mut buf: impl Write, formula: &models::formula::Formula) -> anyhow::Result<()> {
-    writeln!(buf, "{} {} (Cask)", pretty::header(&formula.base.name), formula.base.versions.stable)?;
+fn info_formula(mut buf: impl Write, formula: &models::formula::Formula, installed: Option<&models::formula::installed::Formula>) -> anyhow::Result<()> {
+    write!(buf, "{} {} (Cask)", pretty::header(&formula.base.name), formula.base.versions.stable)?;
+
+    if let Some(installed) = installed {
+        writeln!(buf, " (installed {})", installed.receipt.source.version())?;
+    } else {
+        writeln!(buf)?;
+    }
+
     writeln!(buf, "From {}", formula.base.tap.yellow())?;
+
+
     writeln!(buf)?;
     writeln!(buf, "{}", formula.base.desc)?;
 
@@ -334,8 +346,18 @@ fn info_formula(mut buf: impl Write, formula: &models::formula::Formula) -> anyh
     Ok(())
 }
 
-fn info_cask(mut buf: impl Write, cask: &models::cask::Cask) -> anyhow::Result<()> {
-    writeln!(buf, "{} (Formula)", pretty::header(&cask.base.token))?;
+fn info_cask(mut buf: impl Write, cask: &models::cask::Cask, installed: Option<&models::cask::installed::Cask>) -> anyhow::Result<()> {
+    write!(buf, "{} (Formula)", pretty::header(&cask.base.token))?;
+
+    if let Some(installed) = installed {
+        let versions: Vec<_> = installed.versions.iter().cloned().collect();
+        let versions = versions.join(", ");
+
+        writeln!(buf, " (installed {versions})")?;
+    } else {
+        writeln!(buf)?;
+    }
+
     writeln!(buf, "From {}", cask.base.tap.yellow())?;
 
     writeln!(buf)?;
@@ -422,11 +444,17 @@ pub mod search {
             let (tx, rx): (SkimItemSender, SkimItemReceiver) = unbounded();
 
             for formula in state.formulae.all.into_values() {
-                tx.send(Arc::new(Keg::Formula(formula)))?;
+                let name = formula.base.name.clone();
+                let keg = Keg::Formula(formula, Box::new(state.formulae.installed.get(&name).cloned()));
+
+                tx.send(Arc::new(keg))?;
             }
 
             for cask in state.casks.all.into_values() {
-                tx.send(Arc::new(Keg::Cask(cask)))?;
+                let token = cask.base.token.clone();
+                let keg = Keg::Cask(cask, state.casks.installed.get(&token).cloned());
+
+                tx.send(Arc::new(keg))?;
             }
 
             drop(tx);
@@ -442,8 +470,8 @@ pub mod search {
 
             for keg in selected_items {
                 match keg {
-                    Keg::Formula(formula) => println!("{}", formula.base.name),
-                    Keg::Cask(cask) => println!("{}", cask.base.token)
+                    Keg::Formula(formula, _) => println!("{}", formula.base.name),
+                    Keg::Cask(cask, _) => println!("{}", cask.base.token)
                 }
             }
 
@@ -452,15 +480,15 @@ pub mod search {
     }
 
     enum Keg {
-        Formula(models::formula::Formula),
-        Cask(models::cask::Cask),
+        Formula(models::formula::Formula, Box<Option<models::formula::installed::Formula>>),
+        Cask(models::cask::Cask, Option<models::cask::installed::Cask>),
     }
 
     impl SkimItem for Keg {
         fn text(&self) -> Cow<str> {
             match self {
-                Keg::Formula(formula) => Cow::Borrowed(&formula.base.name),
-                Keg::Cask(cask) => Cow::Borrowed(&cask.base.token)
+                Keg::Formula(formula, _) => Cow::Borrowed(&formula.base.name),
+                Keg::Cask(cask, _) => Cow::Borrowed(&cask.base.token)
             }
         }
 
@@ -468,8 +496,8 @@ pub mod search {
             let mut w = Vec::new();
 
             match self {
-                Keg::Formula(formula) => info_formula(&mut w, formula).unwrap(),
-                Keg::Cask(cask) => info_cask(&mut w, cask).unwrap(),
+                Keg::Formula(formula, installed) => info_formula(&mut w, formula, installed.as_ref().as_ref()).unwrap(),
+                Keg::Cask(cask, installed) => info_cask(&mut w, cask, installed.as_ref()).unwrap(),
             };
 
             ItemPreview::AnsiText(String::from_utf8(w).unwrap())
