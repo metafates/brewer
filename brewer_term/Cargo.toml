@@ -12,6 +12,5 @@ anyhow = "1.0.83"
 brewer_engine = { path = "../brewer_engine" }
 brewer_core = { path = "../brewer_core" }
 clap = { version = "4.5.4", features = ["derive"] }
-anstyle = "1.0.7"
 prettytable-rs = "^0.10"
 terminal_size = "0.3.0"
