@@ -38,7 +38,7 @@ fn run() -> anyhow::Result<bool> {
         Commands::Info(cmd) => {
             let mut engine = get_engine()?;
             let state = engine.cache_or_latest()?;
-           
+
             Ok(cmd.run(state)?)
         }
     }

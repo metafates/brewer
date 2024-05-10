@@ -18,7 +18,7 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     /// Locate the formulae which provides the given executable
-    Which(Which),
+    Which(which::Which),
 
     /// Update the local cache
     Update(Update),
@@ -29,46 +29,175 @@ pub enum Commands {
     Info(Info),
 }
 
-#[derive(Parser)]
-pub struct Which {
-    pub name: String,
-}
+pub mod which {
+    use std::borrow::Cow;
+    use std::collections::HashMap;
+    use std::io::{BufWriter, Write};
+    use std::sync::Arc;
 
-impl Which {
-    pub fn run(&self, state: State) -> anyhow::Result<bool> {
-        let suitable: Vec<_> = state
-            .formulae
-            .all
-            .into_iter()
-            .filter_map(|(_, f)| {
-                if f.executables.contains(&self.name) {
-                    Some(f)
-                } else {
-                    None
-                }
-            })
-            .collect();
+    use clap::Parser;
+    use skim::{ItemPreview, PreviewContext, Skim, SkimItem, SkimItemReceiver, SkimItemSender};
+    use skim::prelude::{SkimOptionsBuilder, unbounded};
 
-        if suitable.is_empty() {
-            return Ok(false);
-        }
+    use brewer_core::models;
+    use brewer_engine::State;
 
-        let mut buf = BufWriter::new(std::io::stdout());
+    use crate::pretty;
 
-        for (i, f) in suitable.iter().enumerate() {
-            writeln!(buf, "{} {}", f.base.name, f.base.versions.stable)?;
-            writeln!(buf, "{}", f.base.desc)?;
+    #[derive(Parser)]
+    pub struct Which {
+        pub name: Option<String>,
+    }
 
-            if i != suitable.len() - 1 {
-                writeln!(buf)?;
+    impl Which {
+        pub fn run(&self, state: State) -> anyhow::Result<bool> {
+            let Some(name) = &self.name else {
+                self.run_skim(state)?;
+                return Ok(true);
+            };
+
+            let suitable: Vec<_> = state
+                .formulae
+                .all
+                .into_iter()
+                .filter_map(|(_, f)| {
+                    if f.executables.contains(name) {
+                        Some(f)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            if suitable.is_empty() {
+                return Ok(false);
             }
+
+            let mut buf = BufWriter::new(std::io::stdout());
+
+            for (i, f) in suitable.iter().enumerate() {
+                formula_info(&mut buf, f, None)?;
+
+                if i != suitable.len() - 1 {
+                    writeln!(buf)?;
+                }
+            }
+
+            buf.flush()?;
+
+            Ok(true)
         }
 
-        buf.flush()?;
 
-        Ok(true)
+        fn run_skim(&self, state: State) -> anyhow::Result<bool> {
+            let mut executables: HashMap<String, models::formula::Store> = HashMap::new();
+
+            for f in state.formulae.all.values() {
+                for e in f.executables.iter() {
+                    match executables.get_mut(e) {
+                        Some(store) => {
+                            store.insert(f.base.name.clone(), f.clone());
+                        }
+                        None => {
+                            let mut store = HashMap::new();
+
+                            store.insert(f.base.name.clone(), f.clone());
+
+                            executables.insert(e.clone(), store);
+                        }
+                    }
+                }
+            }
+
+            let options = SkimOptionsBuilder::default()
+                .multi(true)
+                .preview(Some("")) // preview should be specified to enable preview window
+                .header(Some("Executables"))
+                .build()?;
+
+            let (tx, rx): (SkimItemSender, SkimItemReceiver) = unbounded();
+
+            for (name, provided_by) in executables {
+                tx.send(Arc::new(Executable {
+                    name,
+                    provided_by,
+                }))?;
+            }
+
+            drop(tx);
+
+            let selected_items = Skim::run_with(&options, Some(rx))
+                .map(|out| out.selected_items)
+                .unwrap_or_default();
+
+            let selected_items: Vec<_> = selected_items
+                .iter()
+                .map(|selected_item| (**selected_item).as_any().downcast_ref::<Executable>().unwrap().to_owned())
+                .collect();
+
+            let mut buf = BufWriter::new(std::io::stdout());
+
+            for (i, executable) in selected_items.iter().enumerate() {
+                for (j, formula) in executable.provided_by.values().enumerate() {
+                    formula_info(&mut buf, formula, None)?;
+
+                    if j != executable.provided_by.len() - 1 {
+                        writeln!(buf)?;
+                    }
+                }
+
+                if i != selected_items.len() - 1 {
+                    writeln!(buf)?;
+                }
+            }
+
+            buf.flush()?;
+
+            Ok(true)
+        }
+    }
+
+    struct Executable {
+        pub name: String,
+        pub provided_by: models::formula::Store,
+    }
+
+    impl SkimItem for Executable {
+        fn text(&self) -> Cow<str> {
+            Cow::Borrowed(&self.name)
+        }
+
+        fn preview(&self, _context: PreviewContext) -> ItemPreview {
+            let mut w = Vec::new();
+
+            writeln!(w, "Provided by").unwrap();
+            writeln!(w).unwrap();
+
+            for (i, f) in self.provided_by.values().enumerate() {
+                formula_info(&mut w, f, Some(_context.width)).unwrap();
+
+                if i != self.provided_by.len() - 1 {
+                    writeln!(w).unwrap();
+                }
+            }
+
+            ItemPreview::AnsiText(String::from_utf8(w).unwrap())
+        }
+    }
+
+    fn formula_info(buf: &mut impl Write, formula: &models::formula::Formula, width: Option<usize>) -> anyhow::Result<()> {
+        writeln!(buf, "{} {}", pretty::header(&formula.base.name), formula.base.versions.stable)?;
+
+        if let Some(width) = width {
+            writeln!(buf, "{}", textwrap::wrap(&formula.base.desc, width).join("\n"))?;
+        } else {
+            writeln!(buf, "{}", formula.base.desc)?;
+        }
+
+        Ok(())
     }
 }
+
 
 #[derive(Parser)]
 pub struct Update {}
@@ -188,8 +317,27 @@ impl Info {
 
     fn info_cask(&self, mut buf: impl Write, cask: &models::cask::Cask) -> anyhow::Result<()> {
         writeln!(buf, "{} (Formula)", pretty::header(&cask.base.token))?;
-        writeln!(buf, "TODO: description")?;
+
+        if let Some(desc) = &cask.base.desc {
+            writeln!(buf, "{}", desc)?;
+        } else {
+            writeln!(buf, "No description")?;
+        }
 
         Ok(())
+    }
+}
+
+pub mod search {
+    use brewer_engine::State;
+
+    pub struct Search {
+        pub name: Option<String>,
+    }
+
+    impl Search {
+        pub fn run(&self, state: State) -> anyhow::Result<bool> {
+            Ok(true)
+        }
     }
 }

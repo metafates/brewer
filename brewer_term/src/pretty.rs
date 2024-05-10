@@ -1,8 +1,11 @@
+use colored::Colorize;
 use prettytable::{cell, Row, Table};
 use prettytable::format::consts::FORMAT_CLEAN;
 
 pub fn header(text: &str) -> String {
-    format!("==> {text}")
+    const ARROW: &str = "==>";
+
+    format!("{} {text}", ARROW.truecolor(144, 168, 89))
 }
 
 pub fn table(values: &[String], max_width: u16) -> Table {

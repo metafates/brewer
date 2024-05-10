@@ -138,6 +138,7 @@ pub mod cask {
         pub struct Cask {
             pub token: String,
             pub tap: String,
+            pub desc: Option<String>,
 
             #[serde(default)]
             pub names: HashSet<String>,
