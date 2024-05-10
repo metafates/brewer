@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::fmt::Debug;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
@@ -227,11 +228,12 @@ impl Brew {
     pub fn eval_all(&self) -> anyhow::Result<State<formula::base::Store, cask::base::Store>> {
         let mut command = self.brew();
 
-        let output = command
+        let command = command
             .arg("info")
             .arg("--eval-all")
-            .arg(Self::JSON_FLAG)
-            .output()?;
+            .arg(Self::JSON_FLAG);
+
+        let output = command.output()?;
 
         #[derive(Deserialize)]
         struct Result {

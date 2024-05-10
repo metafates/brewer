@@ -12,3 +12,4 @@ anyhow = "1.0.83"
 brewer_engine = { path = "../brewer_engine" }
 brewer_core = { path = "../brewer_core" }
 clap = { version = "4.5.4", features = ["derive"] }
+anstyle = "1.0.7"
