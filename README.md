@@ -1,6 +1,7 @@
 # Brewer 🍺
 
-An extremly fast homebrew overlay with extra features.
+An extremly fast [homebrew](https://brew.sh/) (macOS & Linux package manager)
+overlay with extra features.
 
 This is a WIP, alpha, early-stage, etc. project. A lot is missing and bugs are
 expected.
