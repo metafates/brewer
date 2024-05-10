@@ -3,34 +3,104 @@ use std::path::PathBuf;
 use std::process::exit;
 
 use clap::Parser;
+use terminal_size::{terminal_size, Width};
 
 use brewer_engine::{Engine, State};
 
 use crate::cli::{Cli, Commands, Which};
 
 mod cli;
+mod pretty;
 
 fn run() -> anyhow::Result<bool> {
-    let store = brewer_engine::store::Store::open(PathBuf::from("brewer.db").as_path())?;
-
-    let mut engine = brewer_engine::EngineBuilder::default()
-        .store(store)
-        .build()?;
-
-    let state = engine.cache_or_latest()?;
-
     let c = Cli::parse();
 
     match c.command {
         Commands::Which(which) => {
+            let mut engine = get_engine()?;
+            let state = engine.cache_or_latest()?;
+
             Ok(cmd_which(which, state)?)
         }
         Commands::Update => {
+            let engine = get_engine()?;
+
             cmd_update(engine)?;
 
             Ok(true)
         }
+        Commands::List => {
+            let mut engine = get_engine()?;
+            let state = engine.cache_or_latest()?;
+
+            cmd_list(state)?;
+
+            Ok(true)
+        }
     }
+}
+
+fn get_engine() -> anyhow::Result<Engine> {
+    let store = brewer_engine::store::Store::open(PathBuf::from("brewer.db").as_path())?;
+
+    let engine = brewer_engine::EngineBuilder::default()
+        .store(store)
+        .build()?;
+
+    Ok(engine)
+}
+
+fn cmd_list(state: State) -> anyhow::Result<()> {
+    let mut buf = BufWriter::new(std::io::stdout());
+
+    let max_width = terminal_size().map(|(Width(w), _)| w).unwrap_or(80);
+
+    {
+        writeln!(buf, "{}", pretty::header("Formulae"))?;
+
+        let mut installed: Vec<_> = state
+            .formulae
+            .installed
+            .into_values()
+            .filter_map(|f| {
+                if f.receipt.installed_on_request {
+                    Some(f.upstream.base.name)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        installed.sort_unstable();
+
+        let table = pretty::table(&installed, max_width);
+
+        table.print(&mut buf)?;
+
+        if !installed.is_empty() {
+            writeln!(buf)?;
+        }
+    }
+    {
+        writeln!(buf, "{}", pretty::header("Casks"))?;
+
+        let mut installed: Vec<_> = state
+            .casks
+            .installed
+            .into_values()
+            .map(|v| v.upstream.base.token)
+            .collect();
+
+        installed.sort_unstable();
+
+        let table = pretty::table(&installed, max_width);
+
+        table.print(&mut buf)?;
+    }
+
+    buf.flush()?;
+
+    Ok(())
 }
 
 fn cmd_update(mut engine: Engine) -> anyhow::Result<()> {

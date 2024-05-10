@@ -14,6 +14,9 @@ pub enum Commands {
 
     /// Update the local cache
     Update,
+
+    /// List installed formulae and casks
+    List,
 }
 
 #[derive(Parser)]
