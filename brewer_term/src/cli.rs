@@ -26,7 +26,11 @@ pub enum Commands {
     /// List installed formulae and casks
     List(List),
 
+    /// Show information about formula or cask
     Info(Info),
+
+    /// Search for formulae and casks
+    Search(search::Search),
 }
 
 pub mod which {
@@ -329,14 +333,52 @@ impl Info {
 }
 
 pub mod search {
+    use std::io::{BufWriter, Write};
+
+    use clap::Parser;
+    use nucleo_matcher::pattern::{Atom, AtomKind, CaseMatching, Normalization};
+    use terminal_size::{terminal_size, Width};
+
     use brewer_engine::State;
 
+    use crate::pretty;
+
+    #[derive(Parser)]
     pub struct Search {
-        pub name: Option<String>,
+        pub name: String,
     }
 
     impl Search {
         pub fn run(&self, state: State) -> anyhow::Result<bool> {
+            let mut matcher = nucleo_matcher::Matcher::new(nucleo_matcher::Config::DEFAULT);
+
+            let atom = Atom::new(&self.name, CaseMatching::Ignore, Normalization::Smart, AtomKind::Substring, false);
+
+            let formulae = atom.match_list(state.formulae.all.into_values().map(|v| v.base.name), &mut matcher);
+            let formulae: Vec<_> = formulae.into_iter().map(|(item, _)| item).collect();
+
+            let casks = atom.match_list(state.casks.all.into_values().map(|v| v.base.token), &mut matcher);
+            let casks: Vec<_> = casks.into_iter().map(|(item, _)| item).collect();
+
+            if formulae.is_empty() && casks.is_empty() {
+                return Ok(false);
+            }
+
+            let width = terminal_size().map(|(Width(w), _)| w).unwrap_or(80);
+
+            let formulae = pretty::table(&formulae, width);
+            let casks = pretty::table(&casks, width);
+
+            let mut buf = BufWriter::new(std::io::stdout());
+
+            writeln!(buf, "{}", pretty::header("Formulae"))?;
+            formulae.print(&mut buf)?;
+
+            writeln!(buf)?;
+
+            writeln!(buf, "{}", pretty::header("Casks"))?;
+            casks.print(&mut buf)?;
+
             Ok(true)
         }
     }
