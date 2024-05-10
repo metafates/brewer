@@ -23,6 +23,12 @@ pub mod formula {
         pub executables: HashSet<String>,
     }
 
+    impl AsRef<str> for Formula {
+        fn as_ref(&self) -> &str {
+            &self.base.name
+        }
+    }
+
     pub mod base {
         use std::collections::HashSet;
 
@@ -125,6 +131,12 @@ pub mod cask {
     #[derive(Default, Serialize, Deserialize, Clone)]
     pub struct Cask {
         pub base: base::Cask,
+    }
+
+    impl AsRef<str> for Cask {
+        fn as_ref(&self) -> &str {
+            &self.base.token
+        }
     }
 
     pub mod base {

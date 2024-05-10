@@ -376,7 +376,7 @@ fn info_cask(mut buf: impl Write, cask: &models::cask::Cask, installed: Option<&
 
 pub mod search {
     use std::borrow::Cow;
-    use std::io::{BufWriter, Write};
+    use std::io::{BufWriter, IsTerminal, Write};
     use std::sync::Arc;
 
     use clap::Parser;
@@ -398,27 +398,51 @@ pub mod search {
 
     impl Search {
         pub fn run(&self, state: State) -> anyhow::Result<bool> {
-            let Some(name) = &self.name else {
-                self.run_skim(state)?;
+            let kegs = match &self.name {
+                Some(name) => {
+                    let mut matcher = nucleo_matcher::Matcher::new(nucleo_matcher::Config::DEFAULT);
 
-                return Ok(true);
+                    let atom = Atom::new(name, CaseMatching::Ignore, Normalization::Smart, AtomKind::Substring, false);
+
+                    let formulae = atom.match_list(state.formulae.all.into_values(), &mut matcher);
+                    let mut formulae: Vec<_> = formulae.into_iter().map(|(formula, _)| Keg::Formula(formula, Box::new(None))).collect();
+
+                    let casks = atom.match_list(state.casks.all.into_values(), &mut matcher);
+                    let mut casks: Vec<_> = casks.into_iter().map(|(cask, _)| Keg::Cask(cask, None)).collect();
+
+                    formulae.append(&mut casks);
+
+                    formulae
+                }
+                None => self.run_skim(state)?
             };
 
-            let mut matcher = nucleo_matcher::Matcher::new(nucleo_matcher::Config::DEFAULT);
-
-            let atom = Atom::new(name, CaseMatching::Ignore, Normalization::Smart, AtomKind::Substring, false);
-
-            let formulae = atom.match_list(state.formulae.all.into_values().map(|v| v.base.name), &mut matcher);
-            let formulae: Vec<_> = formulae.into_iter().map(|(item, _)| item).collect();
-
-            let casks = atom.match_list(state.casks.all.into_values().map(|v| v.base.token), &mut matcher);
-            let casks: Vec<_> = casks.into_iter().map(|(item, _)| item).collect();
-
-            if formulae.is_empty() && casks.is_empty() {
+            if kegs.is_empty() {
                 return Ok(false);
             }
 
+            if !std::io::stdout().is_terminal() {
+                for keg in kegs {
+                    match keg {
+                        Keg::Formula(formula, _) => println!("{}", formula.base.name),
+                        Keg::Cask(cask, _) => println!("{}", cask.base.token),
+                    };
+                }
+
+                return Ok(true);
+            }
+
             let width = terminal_size().map(|(Width(w), _)| w).unwrap_or(80);
+
+            let mut formulae = Vec::new();
+            let mut casks = Vec::new();
+
+            for keg in kegs {
+                match keg {
+                    Keg::Formula(formula, _) => formulae.push(formula.base.name),
+                    Keg::Cask(cask, _) => casks.push(cask.base.token),
+                }
+            }
 
             let formulae = pretty::table(&formulae, width);
             let casks = pretty::table(&casks, width);
@@ -436,7 +460,7 @@ pub mod search {
             Ok(true)
         }
 
-        fn run_skim(&self, state: State) -> anyhow::Result<()> {
+        fn run_skim(&self, state: State) -> anyhow::Result<Vec<Keg>> {
             let options = SkimOptionsBuilder::default()
                 .multi(true)
                 .preview(Some("")) // preview should be specified to enable preview window
@@ -471,17 +495,17 @@ pub mod search {
                 .map(|selected_item| (**selected_item).as_any().downcast_ref::<Keg>().unwrap().to_owned())
                 .collect();
 
+            let mut kegs = Vec::new();
+
             for keg in selected_items {
-                match keg {
-                    Keg::Formula(formula, _) => println!("{}", formula.base.name),
-                    Keg::Cask(cask, _) => println!("{}", cask.base.token)
-                }
+                kegs.push(keg.clone());
             }
 
-            Ok(())
+            Ok(kegs)
         }
     }
 
+    #[derive(Clone)]
     enum Keg {
         Formula(models::formula::Formula, Box<Option<models::formula::installed::Formula>>),
         Cask(models::cask::Cask, Option<models::cask::installed::Cask>),

@@ -34,12 +34,12 @@ fn calculate_chunk_size(values: &[String], padding: usize, max_width: u16) -> us
     lens.sort_unstable_by(|a, b| b.cmp(a));
 
     let mut chunk_size = 1;
-    let mut row_len = 0;
+    let mut row_len = lens.first().cloned().unwrap_or_default();
 
     for len in lens {
-        if row_len + len + chunk_size * padding < max_width.into() {
+        if row_len + len + padding < max_width.into() {
             chunk_size += 1;
-            row_len += len;
+            row_len += len + padding;
         } else {
             break;
         }
