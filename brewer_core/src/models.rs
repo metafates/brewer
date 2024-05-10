@@ -39,6 +39,7 @@ pub mod formula {
             pub name: String,
             pub tap: String,
             pub desc: String,
+            pub homepage: String,
 
             #[serde(default)]
             pub aliases: HashSet<String>,
@@ -139,6 +140,9 @@ pub mod cask {
             pub token: String,
             pub tap: String,
             pub desc: Option<String>,
+            pub version: String,
+
+            pub homepage: String,
 
             #[serde(default)]
             pub names: HashSet<String>,

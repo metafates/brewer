@@ -330,6 +330,8 @@ fn info_formula(mut buf: impl Write, formula: &models::formula::Formula, install
 
 
     writeln!(buf)?;
+    writeln!(buf, "{}", formula.base.homepage.underline().blue())?;
+    writeln!(buf)?;
     writeln!(buf, "{}", formula.base.desc)?;
 
     if !formula.executables.is_empty() {
@@ -347,7 +349,7 @@ fn info_formula(mut buf: impl Write, formula: &models::formula::Formula, install
 }
 
 fn info_cask(mut buf: impl Write, cask: &models::cask::Cask, installed: Option<&models::cask::installed::Cask>) -> anyhow::Result<()> {
-    write!(buf, "{} (Formula)", pretty::header(&cask.base.token))?;
+    write!(buf, "{} {} (Formula)", pretty::header(&cask.base.token), cask.base.version)?;
 
     if let Some(installed) = installed {
         let versions: Vec<_> = installed.versions.iter().cloned().collect();
@@ -361,6 +363,9 @@ fn info_cask(mut buf: impl Write, cask: &models::cask::Cask, installed: Option<&
     writeln!(buf, "From {}", cask.base.tap.yellow())?;
 
     writeln!(buf)?;
+    writeln!(buf, "{}", cask.base.homepage.underline().blue())?;
+    writeln!(buf)?;
+
 
     if let Some(desc) = &cask.base.desc {
         writeln!(buf, "{}", desc)?;
