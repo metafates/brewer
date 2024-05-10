@@ -1,6 +1,7 @@
 use std::io::{BufWriter, Write};
 
 use clap::{Parser, Subcommand};
+use colored::Colorize;
 use terminal_size::{terminal_size, Width};
 
 use brewer_core::models;
@@ -280,7 +281,7 @@ impl List {
 pub struct Info {
     pub name: String,
 
-    /// Treat given name as cask
+    /// Treat the given name as cask
     #[clap(long, short, action)]
     pub cask: bool,
 }
@@ -294,16 +295,16 @@ impl Info {
                 return Ok(false);
             };
 
-            self.info_cask(buf, cask)?;
+            info_cask(buf, cask)?;
 
             return Ok(true);
         }
 
         match state.formulae.all.get(&self.name) {
-            Some(formula) => self.info_formula(buf, formula)?,
+            Some(formula) => info_formula(buf, formula)?,
             None => {
                 match state.casks.all.get(&self.name) {
-                    Some(cask) => self.info_cask(buf, cask)?,
+                    Some(cask) => info_cask(buf, cask)?,
                     None => return Ok(false)
                 }
             }
@@ -311,48 +312,76 @@ impl Info {
 
         Ok(true)
     }
+}
 
-    fn info_formula(&self, mut buf: impl Write, formula: &models::formula::Formula) -> anyhow::Result<()> {
-        writeln!(buf, "{} {} (Cask)", pretty::header(&formula.base.name), formula.base.versions.stable)?;
-        writeln!(buf, "{}", formula.base.desc)?;
+fn info_formula(mut buf: impl Write, formula: &models::formula::Formula) -> anyhow::Result<()> {
+    writeln!(buf, "{} {} (Cask)", pretty::header(&formula.base.name), formula.base.versions.stable)?;
+    writeln!(buf, "From {}", formula.base.tap.yellow())?;
+    writeln!(buf)?;
+    writeln!(buf, "{}", formula.base.desc)?;
 
-        Ok(())
-    }
+    if !formula.executables.is_empty() {
+        writeln!(buf)?;
+        write!(buf, "Provides")?;
 
-    fn info_cask(&self, mut buf: impl Write, cask: &models::cask::Cask) -> anyhow::Result<()> {
-        writeln!(buf, "{} (Formula)", pretty::header(&cask.base.token))?;
-
-        if let Some(desc) = &cask.base.desc {
-            writeln!(buf, "{}", desc)?;
-        } else {
-            writeln!(buf, "No description")?;
+        for e in formula.executables.iter() {
+            write!(buf, " {}", e.bold().purple())?;
         }
 
-        Ok(())
+        writeln!(buf)?;
     }
+
+    Ok(())
+}
+
+fn info_cask(mut buf: impl Write, cask: &models::cask::Cask) -> anyhow::Result<()> {
+    writeln!(buf, "{} (Formula)", pretty::header(&cask.base.token))?;
+    writeln!(buf, "From {}", cask.base.tap.yellow())?;
+
+    writeln!(buf)?;
+
+    if let Some(desc) = &cask.base.desc {
+        writeln!(buf, "{}", desc)?;
+    } else {
+        writeln!(buf, "No description")?;
+    }
+
+    Ok(())
 }
 
 pub mod search {
+    use std::borrow::Cow;
     use std::io::{BufWriter, Write};
+    use std::sync::Arc;
 
     use clap::Parser;
     use nucleo_matcher::pattern::{Atom, AtomKind, CaseMatching, Normalization};
+    use skim::{ItemPreview, PreviewContext, Skim, SkimItem, SkimItemReceiver, SkimItemSender};
+    use skim::prelude::{SkimOptionsBuilder, unbounded};
     use terminal_size::{terminal_size, Width};
 
+    use brewer_core::models;
     use brewer_engine::State;
 
+    use crate::cli::{info_cask, info_formula};
     use crate::pretty;
 
     #[derive(Parser)]
     pub struct Search {
-        pub name: String,
+        pub name: Option<String>,
     }
 
     impl Search {
         pub fn run(&self, state: State) -> anyhow::Result<bool> {
+            let Some(name) = &self.name else {
+                self.run_skim(state)?;
+
+                return Ok(true);
+            };
+
             let mut matcher = nucleo_matcher::Matcher::new(nucleo_matcher::Config::DEFAULT);
 
-            let atom = Atom::new(&self.name, CaseMatching::Ignore, Normalization::Smart, AtomKind::Substring, false);
+            let atom = Atom::new(name, CaseMatching::Ignore, Normalization::Smart, AtomKind::Substring, false);
 
             let formulae = atom.match_list(state.formulae.all.into_values().map(|v| v.base.name), &mut matcher);
             let formulae: Vec<_> = formulae.into_iter().map(|(item, _)| item).collect();
@@ -380,6 +409,70 @@ pub mod search {
             casks.print(&mut buf)?;
 
             Ok(true)
+        }
+
+        fn run_skim(&self, state: State) -> anyhow::Result<()> {
+            let options = SkimOptionsBuilder::default()
+                .multi(true)
+                .preview(Some("")) // preview should be specified to enable preview window
+                .preview_window(Some("60%"))
+                .header(Some("Search"))
+                .build()?;
+
+            let (tx, rx): (SkimItemSender, SkimItemReceiver) = unbounded();
+
+            for formula in state.formulae.all.into_values() {
+                tx.send(Arc::new(Keg::Formula(formula)))?;
+            }
+
+            for cask in state.casks.all.into_values() {
+                tx.send(Arc::new(Keg::Cask(cask)))?;
+            }
+
+            drop(tx);
+
+            let selected_items = Skim::run_with(&options, Some(rx))
+                .map(|out| out.selected_items)
+                .unwrap_or_default();
+
+            let selected_items: Vec<_> = selected_items
+                .iter()
+                .map(|selected_item| (**selected_item).as_any().downcast_ref::<Keg>().unwrap().to_owned())
+                .collect();
+
+            for keg in selected_items {
+                match keg {
+                    Keg::Formula(formula) => println!("{}", formula.base.name),
+                    Keg::Cask(cask) => println!("{}", cask.base.token)
+                }
+            }
+
+            Ok(())
+        }
+    }
+
+    enum Keg {
+        Formula(models::formula::Formula),
+        Cask(models::cask::Cask),
+    }
+
+    impl SkimItem for Keg {
+        fn text(&self) -> Cow<str> {
+            match self {
+                Keg::Formula(formula) => Cow::Borrowed(&formula.base.name),
+                Keg::Cask(cask) => Cow::Borrowed(&cask.base.token)
+            }
+        }
+
+        fn preview(&self, _context: PreviewContext) -> ItemPreview {
+            let mut w = Vec::new();
+
+            match self {
+                Keg::Formula(formula) => info_formula(&mut w, formula).unwrap(),
+                Keg::Cask(cask) => info_cask(&mut w, cask).unwrap(),
+            };
+
+            ItemPreview::AnsiText(String::from_utf8(w).unwrap())
         }
     }
 }
