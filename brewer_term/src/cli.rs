@@ -3,6 +3,7 @@ use std::io::{BufWriter, Write};
 use clap::{Parser, Subcommand};
 use terminal_size::{terminal_size, Width};
 
+use brewer_core::models;
 use brewer_engine::{Engine, State};
 
 use crate::pretty;
@@ -24,6 +25,8 @@ pub enum Commands {
 
     /// List installed formulae and casks
     List(List),
+
+    Info(Info),
 }
 
 #[derive(Parser)]
@@ -135,6 +138,57 @@ impl List {
         }
 
         buf.flush()?;
+
+        Ok(())
+    }
+}
+
+#[derive(Parser)]
+pub struct Info {
+    pub name: String,
+
+    /// Treat given name as cask
+    #[clap(long, short, action)]
+    pub cask: bool,
+}
+
+impl Info {
+    pub fn run(&self, state: State) -> anyhow::Result<bool> {
+        let buf = BufWriter::new(std::io::stdout());
+
+        if self.cask {
+            let Some(cask) = state.casks.all.get(&self.name) else {
+                return Ok(false);
+            };
+
+            self.info_cask(buf, cask)?;
+
+            return Ok(true);
+        }
+
+        match state.formulae.all.get(&self.name) {
+            Some(formula) => self.info_formula(buf, formula)?,
+            None => {
+                match state.casks.all.get(&self.name) {
+                    Some(cask) => self.info_cask(buf, cask)?,
+                    None => return Ok(false)
+                }
+            }
+        };
+
+        Ok(true)
+    }
+
+    fn info_formula(&self, mut buf: impl Write, formula: &models::formula::Formula) -> anyhow::Result<()> {
+        writeln!(buf, "{} {} (Cask)", pretty::header(&formula.base.name), formula.base.versions.stable)?;
+        writeln!(buf, "{}", formula.base.desc)?;
+
+        Ok(())
+    }
+
+    fn info_cask(&self, mut buf: impl Write, cask: &models::cask::Cask) -> anyhow::Result<()> {
+        writeln!(buf, "{} (Formula)", pretty::header(&cask.base.token))?;
+        writeln!(buf, "TODO: description")?;
 
         Ok(())
     }
