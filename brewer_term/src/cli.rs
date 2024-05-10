@@ -49,7 +49,7 @@ pub mod which {
     use brewer_core::models;
     use brewer_engine::State;
 
-    use crate::pretty;
+    use crate::cli::info_formula;
 
     #[derive(Parser)]
     pub struct Which {
@@ -83,7 +83,7 @@ pub mod which {
             let mut buf = BufWriter::new(std::io::stdout());
 
             for (i, f) in suitable.iter().enumerate() {
-                formula_info(&mut buf, f, None)?;
+                info_formula(&mut buf, f, None)?;
 
                 if i != suitable.len() - 1 {
                     writeln!(buf)?;
@@ -147,7 +147,7 @@ pub mod which {
 
             for (i, executable) in selected_items.iter().enumerate() {
                 for (j, formula) in executable.provided_by.values().enumerate() {
-                    formula_info(&mut buf, formula, None)?;
+                    info_formula(&mut buf, formula, None)?;
 
                     if j != executable.provided_by.len() - 1 {
                         writeln!(buf)?;
@@ -182,27 +182,18 @@ pub mod which {
             writeln!(w).unwrap();
 
             for (i, f) in self.provided_by.values().enumerate() {
-                formula_info(&mut w, f, Some(_context.width)).unwrap();
+                info_formula(&mut w, f, None).unwrap();
 
                 if i != self.provided_by.len() - 1 {
                     writeln!(w).unwrap();
                 }
             }
 
-            ItemPreview::AnsiText(String::from_utf8(w).unwrap())
+            let preview = String::from_utf8(w).unwrap();
+            let preview = textwrap::wrap(&preview, _context.width).join("\n");
+
+            ItemPreview::AnsiText(preview)
         }
-    }
-
-    fn formula_info(buf: &mut impl Write, formula: &models::formula::Formula, width: Option<usize>) -> anyhow::Result<()> {
-        writeln!(buf, "{} {}", pretty::header(&formula.base.name), formula.base.versions.stable)?;
-
-        if let Some(width) = width {
-            writeln!(buf, "{}", textwrap::wrap(&formula.base.desc, width).join("\n"))?;
-        } else {
-            writeln!(buf, "{}", formula.base.desc)?;
-        }
-
-        Ok(())
     }
 }
 
@@ -507,7 +498,10 @@ pub mod search {
                 Keg::Cask(cask, installed) => info_cask(&mut w, cask, installed.as_ref()).unwrap(),
             };
 
-            ItemPreview::AnsiText(String::from_utf8(w).unwrap())
+            let preview = String::from_utf8(w).unwrap();
+            let preview = textwrap::wrap(&preview, _context.width).join("\n");
+
+            ItemPreview::AnsiText(preview)
         }
     }
 }
