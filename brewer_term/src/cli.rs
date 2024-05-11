@@ -305,15 +305,14 @@ impl Info {
 }
 
 fn info_formula(mut buf: impl Write, formula: &models::formula::Formula, installed: Option<&models::formula::installed::Formula>) -> anyhow::Result<()> {
-    write!(buf, "{} {} (Cask)", pretty::header(&formula.base.name), formula.base.versions.stable)?;
+    writeln!(buf, "{} {} (Cask)", pretty::header(&formula.base.name), formula.base.versions.stable)?;
+    writeln!(buf)?;
+    writeln!(buf, "From {}", formula.base.tap.yellow())?;
 
     if let Some(installed) = installed {
-        writeln!(buf, " (installed {})", installed.receipt.source.version())?;
-    } else {
         writeln!(buf)?;
+        writeln!(buf, "Installed {} {}", installed.receipt.source.version(), pretty::bool(true))?;
     }
-
-    writeln!(buf, "From {}", formula.base.tap.yellow())?;
 
 
     writeln!(buf)?;
@@ -347,20 +346,19 @@ fn info_formula(mut buf: impl Write, formula: &models::formula::Formula, install
 }
 
 fn info_cask(mut buf: impl Write, cask: &models::cask::Cask, installed: Option<&models::cask::installed::Cask>) -> anyhow::Result<()> {
-    write!(buf, "{} {} (Formula)", pretty::header(&cask.base.token), cask.base.version)?;
+    writeln!(buf, "{} {} (Formula)", pretty::header(&cask.base.token), cask.base.version)?;
+    writeln!(buf)?;
+    writeln!(buf, "From {}", cask.base.tap.yellow())?;
+    writeln!(buf)?;
 
     if let Some(installed) = installed {
         let versions: Vec<_> = installed.versions.iter().cloned().collect();
         let versions = versions.join(", ");
 
-        writeln!(buf, " (installed {versions})")?;
-    } else {
+        writeln!(buf, "Installed {versions} {}", pretty::bool(true))?;
         writeln!(buf)?;
     }
 
-    writeln!(buf, "From {}", cask.base.tap.yellow())?;
-
-    writeln!(buf)?;
     writeln!(buf, "{}", cask.base.homepage.underline().blue())?;
     writeln!(buf)?;
 
