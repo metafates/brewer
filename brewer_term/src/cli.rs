@@ -1,6 +1,6 @@
 use std::io::{BufWriter, Write};
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use colored::Colorize;
 use terminal_size::{terminal_size, Width};
 
@@ -42,7 +42,7 @@ pub mod which {
     use std::io::{BufWriter, IsTerminal, Write};
     use std::sync::Arc;
 
-    use clap::Parser;
+    use clap::Args;
     use skim::{ItemPreview, PreviewContext, Skim, SkimItem, SkimItemReceiver, SkimItemSender};
     use skim::prelude::{SkimOptionsBuilder, unbounded};
 
@@ -52,7 +52,7 @@ pub mod which {
 
     use crate::cli::info_formula;
 
-    #[derive(Parser)]
+    #[derive(Args)]
     pub struct Which {
         pub name: Option<String>,
     }
@@ -192,7 +192,7 @@ pub mod which {
 }
 
 
-#[derive(Parser)]
+#[derive(Args)]
 pub struct Update {}
 
 impl Update {
@@ -209,7 +209,7 @@ impl Update {
     }
 }
 
-#[derive(Parser)]
+#[derive(Args)]
 pub struct List {}
 
 impl List {
@@ -267,7 +267,7 @@ impl List {
     }
 }
 
-#[derive(Parser)]
+#[derive(Args)]
 pub struct Info {
     pub name: String,
 
@@ -379,7 +379,7 @@ pub mod search {
     use std::io::{BufWriter, IsTerminal, Write};
     use std::sync::Arc;
 
-    use clap::Parser;
+    use clap::Args;
     use nucleo_matcher::pattern::{Atom, AtomKind, CaseMatching, Normalization};
     use skim::{ItemPreview, PreviewContext, Skim, SkimItem, SkimItemReceiver, SkimItemSender};
     use skim::prelude::{SkimOptionsBuilder, unbounded};
@@ -391,7 +391,7 @@ pub mod search {
     use crate::cli::{info_cask, info_formula};
     use crate::pretty;
 
-    #[derive(Parser)]
+    #[derive(Args)]
     pub struct Search {
         pub name: Option<String>,
     }
@@ -405,10 +405,18 @@ pub mod search {
                     let atom = Atom::new(name, CaseMatching::Ignore, Normalization::Smart, AtomKind::Substring, false);
 
                     let formulae = atom.match_list(state.formulae.all.into_values(), &mut matcher);
-                    let mut formulae: Vec<_> = formulae.into_iter().map(|(formula, _)| Keg::Formula(formula, Box::new(None))).collect();
+                    let mut formulae: Vec<_> = formulae.into_iter().map(|(formula, _)| {
+                        let installed = state.formulae.installed.get(&formula.base.name);
+
+                        Keg::Formula(formula, Box::new(installed.cloned()))
+                    }).collect();
 
                     let casks = atom.match_list(state.casks.all.into_values(), &mut matcher);
-                    let mut casks: Vec<_> = casks.into_iter().map(|(cask, _)| Keg::Cask(cask, None)).collect();
+                    let mut casks: Vec<_> = casks.into_iter().map(|(cask, _)| {
+                        let installed = state.casks.installed.get(&cask.base.token);
+
+                        Keg::Cask(cask, installed.cloned())
+                    }).collect();
 
                     formulae.append(&mut casks);
 
@@ -439,8 +447,24 @@ pub mod search {
 
             for keg in kegs {
                 match keg {
-                    Keg::Formula(formula, _) => formulae.push(formula.base.name),
-                    Keg::Cask(cask, _) => casks.push(cask.base.token),
+                    Keg::Formula(formula, installed) => {
+                        let name = if installed.is_some() {
+                            format!("{} {}", formula.base.name, pretty::bool(true))
+                        } else {
+                            formula.base.name
+                        };
+
+                        formulae.push(name)
+                    }
+                    Keg::Cask(cask, installed) => {
+                        let name = if installed.is_some() {
+                            format!("{} {}", cask.base.token, pretty::bool(true))
+                        } else {
+                            cask.base.token
+                        };
+
+                        casks.push(name)
+                    }
                 }
             }
 

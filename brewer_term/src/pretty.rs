@@ -8,6 +8,14 @@ pub fn header(text: &str) -> String {
     format!("{} {text}", ARROW.truecolor(144, 168, 89))
 }
 
+pub fn bool(b: bool) -> String {
+    if b {
+        "✔".green().to_string()
+    } else {
+        "✗".red().to_string()
+    }
+}
+
 pub fn table(values: &[String], max_width: u16) -> Table {
     const RIGHT_PADDING: usize = 2;
 
