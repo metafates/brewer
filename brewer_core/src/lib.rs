@@ -23,7 +23,9 @@ const DEFAULT_BREW_PREFIX: &str = "/usr/local";
 #[cfg(target_os = "linux")]
 const DEFAULT_BREW_PREFIX: &str = "/home/linuxbrew/.linuxbrew";
 
-const DEFAULT_BREW_BIN_REGISTRY_URL: &str = "https://raw.githubusercontent.com/Homebrew/homebrew-command-not-found/master/executables.txt";
+const BREW_BIN_REGISTRY_URL: &str = "https://raw.githubusercontent.com/Homebrew/homebrew-command-not-found/master/executables.txt";
+
+const BREW_ANALYTICS_URL: &str = "https://formulae.brew.sh/api/analytics/install/30d.json";
 
 #[derive(Builder, Clone)]
 pub struct Brew {
@@ -47,8 +49,27 @@ impl Brew {
         Command::new(self.path.clone())
     }
 
+    pub fn analytics(&self) -> anyhow::Result<formula::analytics::Store> {
+        let body = reqwest::blocking::get(BREW_ANALYTICS_URL)?.bytes()?;
+
+        #[derive(Deserialize)]
+        struct Result {
+            pub items: Vec<formula::analytics::Formula>,
+        }
+
+        let result: Result = serde_json::from_slice(body.iter().as_slice())?;
+
+        let mut store = formula::analytics::Store::new();
+
+        for item in result.items {
+            store.insert(item.formula.clone(), item);
+        }
+
+        Ok(store)
+    }
+
     pub fn executables(&self) -> anyhow::Result<formula::Executables> {
-        let body = reqwest::blocking::get(DEFAULT_BREW_BIN_REGISTRY_URL)?.text()?;
+        let body = reqwest::blocking::get(BREW_BIN_REGISTRY_URL)?.text()?;
         let mut store = formula::Executables::new();
 
         for line in body.lines().filter(|l| !l.is_empty()) {
@@ -70,24 +91,32 @@ impl Brew {
     }
 
     pub fn state(&self) -> anyhow::Result<State<formula::State, cask::State>> {
-        let all = self.eval_all()?;
         let executables = self.executables()?;
+        let analytics = self.analytics()?;
+        let all = self.eval_all()?;
 
         let all: State<formula::Store, cask::Store> = State {
-            formulae: all.formulae.into_iter().map(|(k, base)| {
-                let executables = if let Some(e) = executables.get(&k) {
+            formulae: all.formulae.into_iter().map(|(name, base)| {
+                let executables = if let Some(e) = executables.get(&name) {
                     e.clone()
                 } else {
                     HashSet::new()
                 };
 
-                (k, formula::Formula {
+                let analytics = if let Some(a) = analytics.get(&name) {
+                    Some(a.clone())
+                } else {
+                    analytics.get(format!("{}/{}", base.tap, base.name).as_str()).cloned()
+                };
+
+                (name, formula::Formula {
                     base,
                     executables,
+                    analytics,
                 })
             }).collect(),
-            casks: all.casks.into_iter().map(|(k, base)| {
-                (k, cask::Cask { base })
+            casks: all.casks.into_iter().map(|(name, base)| {
+                (name, cask::Cask { base })
             }).collect(),
         };
 
