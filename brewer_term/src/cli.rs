@@ -108,8 +108,6 @@ pub mod which {
                     let rest: Vec<_> = formulae.into_iter().skip(1).collect();
 
                     if !rest.is_empty() {
-                        writeln!(buf)?;
-
                         write!(buf, "Command {} is also provided by", name.purple().bold())?;
 
                         for f in rest {
@@ -333,7 +331,6 @@ impl Info {
 
 fn info_formula(mut buf: impl Write, formula: &models::formula::Formula, installed: Option<&models::formula::installed::Formula>) -> anyhow::Result<()> {
     writeln!(buf, "{} {} (Cask)", pretty::header(&formula.base.name), formula.base.versions.stable)?;
-    writeln!(buf)?;
     writeln!(buf, "From {}", formula.base.tap.yellow())?;
 
     if let Some(installed) = installed {
@@ -345,7 +342,7 @@ fn info_formula(mut buf: impl Write, formula: &models::formula::Formula, install
     writeln!(buf)?;
     writeln!(buf, "{}", formula.base.homepage.underline().blue())?;
     writeln!(buf)?;
-    writeln!(buf, "{}", formula.base.desc)?;
+    writeln!(buf, "{}", formula.base.desc.italic())?;
 
     if !formula.executables.is_empty() {
         writeln!(buf)?;
@@ -374,7 +371,6 @@ fn info_formula(mut buf: impl Write, formula: &models::formula::Formula, install
 
 fn info_cask(mut buf: impl Write, cask: &models::cask::Cask, installed: Option<&models::cask::installed::Cask>) -> anyhow::Result<()> {
     writeln!(buf, "{} {} (Formula)", pretty::header(&cask.base.token), cask.base.version)?;
-    writeln!(buf)?;
     writeln!(buf, "From {}", cask.base.tap.yellow())?;
     writeln!(buf)?;
 
@@ -390,11 +386,13 @@ fn info_cask(mut buf: impl Write, cask: &models::cask::Cask, installed: Option<&
     writeln!(buf)?;
 
 
-    if let Some(desc) = &cask.base.desc {
-        writeln!(buf, "{}", desc)?;
+    let desc = if let Some(desc) = &cask.base.desc {
+        desc
     } else {
-        writeln!(buf, "No description")?;
-    }
+        "No description"
+    };
+
+    writeln!(buf, "{}", desc.italic())?;
 
     Ok(())
 }

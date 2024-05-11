@@ -77,9 +77,6 @@ pub mod formula {
     }
 
     pub mod analytics {
-        use std::fmt::Display;
-        use std::str::FromStr;
-
         use serde::{Deserialize, Serialize};
 
         use crate::models::keg;
