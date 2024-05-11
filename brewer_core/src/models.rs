@@ -90,22 +90,6 @@ pub mod formula {
         pub struct Formula {
             pub number: i64,
             pub formula: String,
-
-            #[serde(deserialize_with = "deserialize_count")]
-            pub count: i64,
-        }
-
-        pub fn deserialize_count<'de, T, D>(deserializer: D) -> Result<T, D::Error>
-            where
-                D: serde::Deserializer<'de>,
-                T: FromStr + serde::Deserialize<'de>,
-                <T as FromStr>::Err: Display,
-        {
-            let count = String::deserialize(deserializer)?;
-            let count: String = count.chars().filter(|c| *c != ',').collect();
-            let count: T = count.parse().map_err(serde::de::Error::custom)?;
-
-            Ok(count)
         }
     }
 

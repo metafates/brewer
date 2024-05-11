@@ -43,11 +43,11 @@ pub mod which {
     use std::sync::Arc;
 
     use clap::Args;
+    use colored::Colorize;
     use skim::{ItemPreview, PreviewContext, Skim, SkimItem, SkimItemReceiver, SkimItemSender};
     use skim::prelude::{SkimOptionsBuilder, unbounded};
 
     use brewer_core::models;
-    use brewer_core::models::formula::Formula;
     use brewer_engine::State;
 
     use crate::cli::info_formula;
@@ -55,44 +55,78 @@ pub mod which {
     #[derive(Args)]
     pub struct Which {
         pub name: Option<String>,
+
+        /// Show all matched formulae instead of the most popular one.
+        #[clap(long, short, action)]
+        pub all: bool,
     }
 
     impl Which {
         pub fn run(&self, state: State) -> anyhow::Result<bool> {
-            let formulae = match &self.name {
-                Some(name) => {
-                    state
-                        .formulae
-                        .all
-                        .into_iter()
-                        .filter_map(|(_, f)| {
-                            if f.executables.contains(name) {
-                                Some(f)
-                            } else {
-                                None
-                            }
-                        })
-                        .collect()
-                }
-                None => self.run_skim(state)?
+            let name = if let Some(name) = &self.name {
+                name.to_string()
+            } else {
+                self.run_skim(&state)?
             };
+
+            let mut formulae: Vec<_> = state
+                .formulae
+                .all
+                .into_iter()
+                .filter_map(|(_, f)| {
+                    if f.executables.contains(&name) {
+                        Some(f)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
 
             if formulae.is_empty() {
                 return Ok(false);
             }
 
+            formulae.sort_unstable_by_key(|f| f.analytics.as_ref().map(|a| a.number).unwrap_or_default());
+
             let mut buf = BufWriter::new(std::io::stdout());
 
             if std::io::stdout().is_terminal() {
-                for (i, f) in formulae.iter().enumerate() {
-                    info_formula(&mut buf, f, None)?;
+                if self.all {
+                    for (i, f) in formulae.iter().enumerate() {
+                        info_formula(&mut buf, f, None)?;
 
-                    if i != formulae.len() - 1 {
+                        if i != formulae.len() - 1 {
+                            writeln!(buf)?;
+                        }
+                    }
+                } else {
+                    // we return early if formulae is empty, so we have at least 1 element
+                    let first = formulae.first().unwrap();
+
+                    info_formula(&mut buf, first, None)?;
+
+                    let rest: Vec<_> = formulae.into_iter().skip(1).collect();
+
+                    if !rest.is_empty() {
+                        writeln!(buf)?;
+
+                        write!(buf, "Command {} is also provided by", name.purple().bold())?;
+
+                        for f in rest {
+                            write!(buf, " {}", f.base.name.cyan().bold())?;
+                        }
+
                         writeln!(buf)?;
                     }
                 }
             } else {
-                for f in formulae.into_iter() {
+                let formulae = if self.all {
+                    formulae
+                } else {
+                    formulae.into_iter().take(1).collect()
+                };
+
+                for f in formulae {
                     writeln!(buf, "{}", f.base.name)?;
                 }
             }
@@ -103,7 +137,7 @@ pub mod which {
         }
 
 
-        fn run_skim(&self, state: State) -> anyhow::Result<Vec<Formula>> {
+        fn run_skim(&self, state: &State) -> anyhow::Result<String> {
             let mut executables: HashMap<String, models::formula::Store> = HashMap::new();
 
             for f in state.formulae.all.values() {
@@ -124,7 +158,7 @@ pub mod which {
             }
 
             let options = SkimOptionsBuilder::default()
-                .multi(true)
+                .multi(false)
                 .preview(Some("")) // preview should be specified to enable preview window
                 .preview_window(Some("60%"))
                 .header(Some("Executables"))
@@ -141,21 +175,14 @@ pub mod which {
 
             drop(tx);
 
-            let selected_items = Skim::run_with(&options, Some(rx))
+            let item = Skim::run_with(&options, Some(rx))
                 .map(|out| out.selected_items)
+                .unwrap_or_default()
+                .first()
+                .map(|item| item.output().to_string())
                 .unwrap_or_default();
 
-            let mut formulae = Vec::new();
-
-            for item in selected_items {
-                let item = item.as_any().downcast_ref::<Executable>().unwrap();
-
-                for formula in item.provided_by.values() {
-                    formulae.push(formula.clone());
-                }
-            }
-
-            Ok(formulae)
+            Ok(item)
         }
     }
 
