@@ -6,7 +6,7 @@ overlay with extra features.
 This is a WIP, alpha, early-stage, etc. project. A lot is missing and bugs are
 expected.
 
-[![asciicast](https://asciinema.org/a/658721.svg)](https://asciinema.org/a/658721)
+[![asciicast](https://asciinema.org/a/xHsicw0FhBi0ehVJsuWxvtkWH.svg)](https://asciinema.org/a/xHsicw0FhBi0ehVJsuWxvtkWH)
 
 ## Features
 
