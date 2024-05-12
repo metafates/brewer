@@ -40,6 +40,8 @@ Commands:
   list    List installed formulae and casks
   info    Show information about formula or cask
   search  Search for formulae and casks
+  paths   Show paths that brewer uses
+  exists  Indicate if the given formula or cask exists by exit code
   help    Print this message or the help of the given subcommand(s)
 
 Options:
