@@ -14,6 +14,8 @@ pub mod models;
 
 const DEFAULT_BREW_PATH: &str = "brew";
 
+const BREW_PREFIX_ENV_KEY: &str = "HOMEBREW_PREFIX";
+
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 const DEFAULT_BREW_PREFIX: &str = "/opt/homebrew";
 
@@ -29,15 +31,23 @@ const BREW_ANALYTICS_URL: &str = "https://formulae.brew.sh/api/analytics/install
 
 #[derive(Builder, Clone)]
 pub struct Brew {
-    path: PathBuf,
-    prefix: PathBuf,
+    pub path: PathBuf,
+    pub prefix: PathBuf,
 }
 
 impl Default for Brew {
     fn default() -> Self {
+        let prefix_env = std::env::var(BREW_PREFIX_ENV_KEY).unwrap_or_default();
+
+        let prefix = if prefix_env.is_empty() {
+            DEFAULT_BREW_PREFIX.into()
+        } else {
+            prefix_env
+        };
+
         Brew {
             path: DEFAULT_BREW_PATH.into(),
-            prefix: DEFAULT_BREW_PREFIX.into(),
+            prefix: prefix.into(),
         }
     }
 }

@@ -19,3 +19,5 @@ textwrap = "0.16.1"
 colored = "2.1.0"
 nucleo-matcher = "0.3.1"
 dirs = "5.0.1"
+serde = { version = "1.0.201", features = ["derive"] }
+config = { version = "0.14.0", features = ["toml"] }

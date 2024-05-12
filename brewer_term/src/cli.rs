@@ -34,6 +34,9 @@ pub enum Commands {
     /// Search for formulae and casks
     #[clap(alias = "s")]
     Search(search::Search),
+
+    /// Show paths that brewer uses
+    Paths(paths::Paths),
 }
 
 pub mod which {
@@ -581,3 +584,31 @@ pub mod search {
         }
     }
 }
+
+pub mod paths {
+    use clap::{Parser, Subcommand};
+
+    use crate::settings;
+
+    #[derive(Parser)]
+    pub struct Paths {
+        #[command(subcommand)]
+        pub command: Commands,
+    }
+
+    #[derive(Subcommand)]
+    pub enum Commands {
+        /// Show config path
+        Config
+    }
+
+    impl Paths {
+        pub fn run(&self) {
+            match self.command {
+                Commands::Config => println!("{}", settings::Settings::config_file().to_string_lossy()),
+            }
+        }
+    }
+}
+
+

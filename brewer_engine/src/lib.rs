@@ -18,8 +18,8 @@ pub struct Engine {
     #[builder(default)]
     brew: Brew,
 
-    #[builder(default = "Duration::from_secs(60 * 24 * 12)")]
-    cache_duration: Duration,
+    /// How often cache should expire. None means never
+    cache_duration: Option<Duration>,
 }
 
 impl Engine {
@@ -27,7 +27,7 @@ impl Engine {
         Engine {
             store,
             brew,
-            cache_duration: Duration::from_secs(60 * 24 * 12),
+            cache_duration: None,
         }
     }
 
@@ -70,13 +70,17 @@ impl Engine {
     }
 
     pub fn cache_expired(&self) -> anyhow::Result<bool> {
+        let Some(cache_duration) = self.cache_duration else {
+            return Ok(false);
+        };
+
         let last_update = self.store.last_update()?;
 
         match last_update {
             Some(last_update) => {
                 let now = Utc::now().naive_utc();
 
-                Ok(last_update + self.cache_duration <= now)
+                Ok(last_update + cache_duration <= now)
             }
             None => Ok(true)
         }
