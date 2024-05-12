@@ -342,35 +342,81 @@ pub struct Info {
     pub name: String,
 
     /// Treat the given name as cask
-    #[clap(long, short, action)]
+    #[clap(long, short, action, group = "type")]
     pub cask: bool,
+
+    /// Treat the given name as formula
+    #[clap(long, short, action, group = "type")]
+    pub formula: bool,
+
+    /// Open the homepage using default browser
+    #[clap(long, short, action)]
+    pub open_homepage: bool,
 }
 
 impl Info {
     pub fn run(&self, state: State) -> anyhow::Result<bool> {
-        let buf = BufWriter::new(std::io::stdout());
-
         if self.cask {
             let Some(cask) = state.casks.all.get(&self.name) else {
                 return Ok(false);
             };
 
-            info_cask(buf, cask, state.casks.installed.get(&self.name))?;
+            self.handle_cask(cask, state.casks.installed.get(&self.name))?;
+
+            return Ok(true);
+        }
+
+        if self.formula {
+            let Some(formula) = state.formulae.all.get(&self.name) else {
+                return Ok(false);
+            };
+
+            self.handle_formula(formula, state.formulae.installed.get(&self.name))?;
 
             return Ok(true);
         }
 
         match state.formulae.all.get(&self.name) {
-            Some(formula) => info_formula(buf, formula, state.formulae.installed.get(&self.name))?,
+            Some(formula) => self.handle_formula(formula, state.formulae.installed.get(&self.name))?,
             None => {
                 match state.casks.all.get(&self.name) {
-                    Some(cask) => info_cask(buf, cask, state.casks.installed.get(&self.name))?,
+                    Some(cask) => self.handle_cask(cask, state.casks.installed.get(&self.name))?,
                     None => return Ok(false)
                 }
             }
         };
 
         Ok(true)
+    }
+
+    pub fn handle_formula(&self, formula: &models::formula::Formula, installed: Option<&models::formula::installed::Formula>) -> anyhow::Result<()> {
+        if self.open_homepage {
+            open::that_detached(&formula.base.homepage)?;
+            return Ok(());
+        }
+
+        let mut buf = BufWriter::new(std::io::stdout());
+
+        info_formula(&mut buf, formula, installed)?;
+
+        buf.flush()?;
+
+        Ok(())
+    }
+
+    pub fn handle_cask(&self, cask: &models::cask::Cask, installed: Option<&models::cask::installed::Cask>) -> anyhow::Result<()> {
+        if self.open_homepage {
+            open::that_detached(&cask.base.homepage)?;
+            return Ok(());
+        }
+
+        let mut buf = BufWriter::new(std::io::stdout());
+
+        info_cask(&mut buf, cask, installed)?;
+
+        buf.flush()?;
+
+        Ok(())
     }
 }
 
@@ -414,7 +460,7 @@ fn info_formula(mut buf: impl Write, formula: &models::formula::Formula, install
     Ok(())
 }
 
-fn info_cask(mut buf: impl Write, cask: &models::cask::Cask, installed: Option<&models::cask::installed::Cask>) -> anyhow::Result<()> {
+fn info_cask(buf: &mut impl Write, cask: &models::cask::Cask, installed: Option<&models::cask::installed::Cask>) -> anyhow::Result<()> {
     writeln!(buf, "{} {} (Formula)", pretty::header(&cask.base.token), cask.base.version)?;
     writeln!(buf, "From {}", cask.base.tap.yellow())?;
     writeln!(buf)?;
