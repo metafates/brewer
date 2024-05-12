@@ -238,7 +238,23 @@ impl Update {
 }
 
 #[derive(Args)]
-pub struct List {}
+pub struct List {
+    /// List formulae
+    #[clap(short, long, action, group = "type")]
+    pub casks: bool,
+
+    /// List casks
+    #[clap(short, long, action, group = "type")]
+    pub formulae: bool,
+
+    /// List the formulae installed on request.
+    #[clap(short = 'r', long, action)]
+    pub installed_on_request: bool,
+
+    /// List the formulae installed as dependencies.
+    #[clap(short = 'd', long, action)]
+    pub installed_as_dependency: bool,
+}
 
 impl List {
     pub fn run(&self, state: State) -> anyhow::Result<()> {
@@ -246,50 +262,73 @@ impl List {
 
         let max_width = terminal_size().map(|(Width(w), _)| w).unwrap_or(80);
 
-        {
-            writeln!(buf, "{}", pretty::header("Formulae"))?;
-
-            let mut installed: Vec<_> = state
-                .formulae
-                .installed
-                .into_values()
-                .filter_map(|f| {
-                    if f.receipt.installed_on_request {
-                        Some(f.upstream.base.name)
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            installed.sort_unstable();
-
-            let table = pretty::table(&installed, max_width);
-
-            table.print(&mut buf)?;
-
-            if !installed.is_empty() {
-                writeln!(buf)?;
-            }
+        if self.formulae {
+            self.list_formulae(&mut buf, max_width, state.formulae.installed)?;
+            return Ok(());
         }
-        {
-            writeln!(buf, "{}", pretty::header("Casks"))?;
 
-            let mut installed: Vec<_> = state
-                .casks
-                .installed
-                .into_values()
-                .map(|v| v.upstream.base.token)
-                .collect();
+        if !self.casks {
+            self.list_formulae(&mut buf, max_width, state.formulae.installed)?;
+        }
 
-            installed.sort_unstable();
-
-            let table = pretty::table(&installed, max_width);
-
-            table.print(&mut buf)?;
+        if !self.formulae {
+            self.list_casks(&mut buf, max_width, state.casks.installed)?;
         }
 
         buf.flush()?;
+
+        Ok(())
+    }
+
+    fn list_formulae(&self, w: &mut impl Write, max_width: u16, formulae: models::formula::installed::Store) -> anyhow::Result<()> {
+        writeln!(w, "{}", pretty::header("Formulae"))?;
+        let mut installed: Vec<_> = formulae
+            .into_values()
+            .filter_map(|f| {
+                let name = f.upstream.base.name;
+
+                if self.installed_as_dependency {
+                    return if f.receipt.installed_as_dependency {
+                        Some(name)
+                    } else {
+                        None
+                    };
+                }
+
+                if self.installed_on_request {
+                    return if f.receipt.installed_on_request {
+                        Some(name)
+                    } else {
+                        None
+                    };
+                }
+
+                Some(name)
+            })
+            .collect();
+
+        installed.sort_unstable();
+
+        let table = pretty::table(&installed, max_width);
+
+        table.print(w)?;
+
+        Ok(())
+    }
+
+    fn list_casks(&self, w: &mut impl Write, max_width: u16, casks: models::cask::installed::Store) -> anyhow::Result<()> {
+        writeln!(w, "{}", pretty::header("Casks"))?;
+
+        let mut installed: Vec<_> = casks
+            .into_values()
+            .map(|v| v.upstream.base.token)
+            .collect();
+
+        installed.sort_unstable();
+
+        let table = pretty::table(&installed, max_width);
+
+        table.print(w)?;
 
         Ok(())
     }
