@@ -53,7 +53,6 @@ fn run() -> anyhow::Result<bool> {
         }
         Commands::Search(cmd) => {
             let settings = settings::Settings::new()?;
-            println!("{:?}", settings.cache.auto_update);
 
             let mut engine = get_engine(settings)?;
             let state = engine.cache_or_latest()?;
@@ -64,6 +63,14 @@ fn run() -> anyhow::Result<bool> {
             cmd.run();
 
             Ok(true)
+        }
+        Commands::Exists(cmd) => {
+            let settings = settings::Settings::new()?;
+
+            let mut engine = get_engine(settings)?;
+            let state = engine.cache_or_latest()?;
+
+            Ok(cmd.run(state))
         }
     }
 }

@@ -37,6 +37,9 @@ pub enum Commands {
 
     /// Show paths that brewer uses
     Paths(paths::Paths),
+
+    /// Indicate if the given formula or cask exists by exit code.
+    Exists(Exists),
 }
 
 pub mod which {
@@ -644,10 +647,38 @@ pub mod paths {
     impl Paths {
         pub fn run(&self) {
             match self.command {
-                Commands::Config => println!("{}", settings::Settings::config_file().to_string_lossy()),
+                Commands::Config => println!("{}.toml", settings::Settings::config_file().to_string_lossy()),
             }
         }
     }
 }
 
+#[derive(Args)]
+pub struct Exists {
+    pub name: String,
 
+    /// Treat given name as formula
+    #[clap(short, long, action)]
+    pub formula: bool,
+
+    /// Treat given name as cask
+    #[clap(short, long, action)]
+    pub cask: bool,
+}
+
+impl Exists {
+    pub fn run(&self, state: State) -> bool {
+        let formulae = state.formulae.all;
+        let casks = state.casks.all;
+
+        if self.cask {
+            return casks.contains_key(&self.name);
+        }
+
+        if self.formula {
+            return formulae.contains_key(&self.name);
+        }
+
+        formulae.contains_key(&self.name) || casks.contains_key(&self.name)
+    }
+}
