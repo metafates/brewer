@@ -251,11 +251,11 @@ pub struct List {
     pub formulae: bool,
 
     /// List the formulae installed on request.
-    #[clap(short = 'r', long, action)]
+    #[clap(short = 'r', long, action, group = "installed")]
     pub installed_on_request: bool,
 
     /// List the formulae installed as dependencies.
-    #[clap(short = 'd', long, action)]
+    #[clap(short = 'd', long, action, group = "installed")]
     pub installed_as_dependency: bool,
 }
 
