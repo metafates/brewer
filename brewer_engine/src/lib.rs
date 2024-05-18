@@ -31,6 +31,18 @@ impl Engine {
         }
     }
 
+    pub fn install(&self, kegs: Vec<models::Keg>) -> anyhow::Result<()> {
+        self.brew.install(kegs)?;
+
+        Ok(())
+    }
+
+    pub fn uninstall(&self, kegs: Vec<models::Keg>) -> anyhow::Result<()> {
+        self.brew.uninstall(kegs)?;
+
+        Ok(())
+    }
+
     pub fn cache_or_latest(&mut self) -> anyhow::Result<State> {
         let cache = self.cache()?;
 
@@ -53,7 +65,7 @@ impl Engine {
             return Ok(None);
         };
 
-        let installed = self.brew.eval_installed(&all)?;
+        let installed = self.brew.installed(&all)?;
 
         let state = State {
             formulae: models::formula::State {

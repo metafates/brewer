@@ -6,6 +6,24 @@ pub struct State<F, C> {
     pub casks: C,
 }
 
+#[derive(Clone)]
+pub enum Keg {
+    Formula(formula::Formula),
+    Cask(cask::Cask),
+}
+
+impl From<formula::Formula> for Keg {
+    fn from(value: formula::Formula) -> Self {
+        Self::Formula(value)
+    }
+}
+
+impl From<cask::Cask> for Keg {
+    fn from(value: cask::Cask) -> Self {
+        Self::Cask(value)
+    }
+}
+
 pub mod formula {
     use std::collections::HashSet;
 
@@ -47,6 +65,16 @@ pub mod formula {
             pub tap: String,
             pub desc: String,
             pub homepage: String,
+            pub caveats: Option<String>,
+
+            pub build_dependencies: Vec<String>,
+            pub dependencies: Vec<String>,
+
+            pub deprecated: bool,
+            pub deprecation_reason: Option<String>,
+
+            pub disabled: bool,
+            pub disable_reason: Option<String>,
 
             #[serde(default)]
             pub aliases: HashSet<String>,
@@ -143,7 +171,7 @@ pub mod cask {
     pub type State = keg::State<Cask, installed::Cask>;
     pub type Store = keg::Store<Cask>;
 
-    #[derive(Default, Serialize, Deserialize, Clone)]
+    #[derive(Serialize, Deserialize, Clone)]
     pub struct Cask {
         pub base: base::Cask,
     }
@@ -162,14 +190,20 @@ pub mod cask {
         use crate::models::cask::installed;
         use crate::models::keg;
 
-        #[derive(Default, Serialize, Deserialize, Clone)]
+        #[derive(Serialize, Deserialize, Clone)]
         pub struct Cask {
             pub token: String,
             pub tap: String,
             pub desc: Option<String>,
             pub version: String,
-
+            pub caveats: Option<String>,
             pub homepage: String,
+
+            pub deprecated: bool,
+            pub deprecation_reason: Option<String>,
+
+            pub disabled: bool,
+            pub disable_reason: Option<String>,
 
             #[serde(default)]
             pub names: HashSet<String>,

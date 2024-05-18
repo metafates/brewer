@@ -72,6 +72,24 @@ fn run() -> anyhow::Result<bool> {
 
             Ok(cmd.run(state))
         }
+        Commands::Install(cmd) => {
+            let settings = settings::Settings::new()?;
+
+            let engine = get_engine(settings)?;
+
+            cmd.run(engine)?;
+
+            Ok(true)
+        }
+        Commands::Uninstall(cmd) => {
+            let settings = settings::Settings::new()?;
+
+            let engine = get_engine(settings)?;
+
+            cmd.run(engine)?;
+
+            Ok(true)
+        }
     }
 }
 

@@ -1,7 +1,10 @@
 use std::io::{BufWriter, Write};
+use std::sync::Arc;
 
 use clap::{Args, Parser, Subcommand};
 use colored::Colorize;
+use skim::{Skim, SkimItem, SkimItemReceiver, SkimItemSender};
+use skim::prelude::{SkimOptionsBuilder, unbounded};
 use terminal_size::{terminal_size, Width};
 
 use brewer_core::models;
@@ -40,23 +43,29 @@ pub enum Commands {
 
     /// Indicate if the given formula or cask exists by exit code.
     Exists(Exists),
+
+    /// Install the given formula or cask.
+    #[clap(alias = "i")]
+    Install(install::Install),
+
+    /// Uninstall the given formula or cask.
+    #[clap(aliases = & ["r", "remove"])]
+    Uninstall(uninstall::Uninstall),
 }
 
 pub mod which {
     use std::borrow::Cow;
     use std::collections::HashMap;
     use std::io::{BufWriter, IsTerminal, Write};
-    use std::sync::Arc;
 
     use clap::Args;
     use colored::Colorize;
-    use skim::{ItemPreview, PreviewContext, Skim, SkimItem, SkimItemReceiver, SkimItemSender};
-    use skim::prelude::{SkimOptionsBuilder, unbounded};
+    use skim::{ItemPreview, PreviewContext, SkimItem};
 
     use brewer_core::models;
     use brewer_engine::State;
 
-    use crate::cli::info_formula;
+    use crate::cli::{info_formula, select_skim};
 
     #[derive(Args)]
     pub struct Which {
@@ -161,35 +170,21 @@ pub mod which {
                 }
             }
 
-            let options = SkimOptionsBuilder::default()
-                .multi(false)
-                .preview(Some("")) // preview should be specified to enable preview window
-                .preview_window(Some("60%"))
-                .header(Some("Executables"))
-                .build()?;
-
-            let (tx, rx): (SkimItemSender, SkimItemReceiver) = unbounded();
-
-            for (name, provided_by) in executables {
-                tx.send(Arc::new(Executable {
+            let executables = executables
+                .into_iter()
+                .map(|(name, provided_by)| Executable {
                     name,
                     provided_by,
-                }))?;
-            }
+                });
 
-            drop(tx);
+            let selected = select_skim(executables, "Executables", false)?;
+            let selected = selected.into_iter().map(|e| e.name).take(1).collect();
 
-            let item = Skim::run_with(&options, Some(rx))
-                .map(|out| out.selected_items)
-                .unwrap_or_default()
-                .first()
-                .map(|item| item.output().to_string())
-                .unwrap_or_default();
-
-            Ok(item)
+            Ok(selected)
         }
     }
 
+    #[derive(Clone)]
     struct Executable {
         pub name: String,
         pub provided_by: models::formula::Store,
@@ -491,18 +486,16 @@ fn info_cask(buf: &mut impl Write, cask: &models::cask::Cask, installed: Option<
 pub mod search {
     use std::borrow::Cow;
     use std::io::{BufWriter, IsTerminal, Write};
-    use std::sync::Arc;
 
     use clap::Args;
     use nucleo_matcher::pattern::{Atom, AtomKind, CaseMatching, Normalization};
-    use skim::{ItemPreview, PreviewContext, Skim, SkimItem, SkimItemReceiver, SkimItemSender};
-    use skim::prelude::{SkimOptionsBuilder, unbounded};
+    use skim::{ItemPreview, PreviewContext, SkimItem};
     use terminal_size::{terminal_size, Width};
 
     use brewer_core::models;
     use brewer_engine::State;
 
-    use crate::cli::{info_cask, info_formula};
+    use crate::cli::{info_cask, info_formula, select_skim};
     use crate::pretty;
 
     #[derive(Args)]
@@ -599,47 +592,25 @@ pub mod search {
         }
 
         fn run_skim(&self, state: State) -> anyhow::Result<Vec<Keg>> {
-            let options = SkimOptionsBuilder::default()
-                .multi(true)
-                .preview(Some("")) // preview should be specified to enable preview window
-                .preview_window(Some("60%"))
-                .header(Some("Search"))
-                .build()?;
-
-            let (tx, rx): (SkimItemSender, SkimItemReceiver) = unbounded();
+            let mut kegs: Vec<Keg> = Vec::new();
 
             for formula in state.formulae.all.into_values() {
                 let name = formula.base.name.clone();
                 let keg = Keg::Formula(formula, Box::new(state.formulae.installed.get(&name).cloned()));
 
-                tx.send(Arc::new(keg))?;
+                kegs.push(keg);
             }
 
             for cask in state.casks.all.into_values() {
                 let token = cask.base.token.clone();
                 let keg = Keg::Cask(cask, state.casks.installed.get(&token).cloned());
 
-                tx.send(Arc::new(keg))?;
+                kegs.push(keg);
             }
 
-            drop(tx);
+            let selected = select_skim(kegs, "Search", true)?;
 
-            let selected_items = Skim::run_with(&options, Some(rx))
-                .map(|out| out.selected_items)
-                .unwrap_or_default();
-
-            let selected_items: Vec<_> = selected_items
-                .iter()
-                .map(|selected_item| (**selected_item).as_any().downcast_ref::<Keg>().unwrap().to_owned())
-                .collect();
-
-            let mut kegs = Vec::new();
-
-            for keg in selected_items {
-                kegs.push(keg.clone());
-            }
-
-            Ok(kegs)
+            Ok(selected)
         }
     }
 
@@ -726,5 +697,349 @@ impl Exists {
         }
 
         formulae.contains_key(&self.name) || casks.contains_key(&self.name)
+    }
+}
+
+pub mod install {
+    use std::borrow::Cow;
+    use std::ops::Deref;
+
+    use anyhow::bail;
+    use clap::Args;
+    use skim::{ItemPreview, PreviewContext, SkimItem};
+
+    use brewer_core::models;
+    use brewer_engine::{Engine, State};
+
+    use crate::cli::{info_cask, info_formula, select_skim};
+
+    #[derive(Args)]
+    pub struct Install {
+        pub names: Vec<String>,
+
+        #[clap(short, long, action, group = "type")]
+        pub formula: bool,
+
+        #[clap(short, long, action, group = "type")]
+        pub cask: bool,
+    }
+
+    impl Install {
+        pub fn run(&self, mut engine: Engine) -> anyhow::Result<()> {
+            let state = engine.cache_or_latest()?;
+
+            let kegs = self.get_kegs(state)?;
+
+            if kegs.is_empty() {
+                Ok(())
+            } else {
+                engine.install(kegs)?;
+
+                Ok(())
+            }
+        }
+
+        fn get_kegs(&self, state: State) -> anyhow::Result<Vec<models::Keg>> {
+            if self.names.is_empty() {
+                self.get_kegs_from_skim(state)
+            } else {
+                self.get_kegs_from_args(state)
+            }
+        }
+
+        fn get_kegs_from_args(&self, mut state: State) -> anyhow::Result<Vec<models::Keg>> {
+            let mut kegs = Vec::new();
+
+            for name in &self.names {
+                let keg = if self.formula {
+                    if state.formulae.installed.contains_key(name) {
+                        println!("formula {name} is already installed, skipping");
+                        continue;
+                    }
+
+                    state.formulae.all.remove(name).map(models::Keg::Formula)
+                } else if self.cask {
+                    if state.casks.installed.contains_key(name) {
+                        println!("cask {name} is already installed, skipping");
+                        continue;
+                    }
+
+                    state.casks.all.remove(name).map(models::Keg::Cask)
+                } else {
+                    if state.formulae.installed.contains_key(name) {
+                        println!("formula {name} is already installed, skipping");
+                        continue;
+                    }
+
+                    if state.casks.installed.contains_key(name) {
+                        println!("cask {name} is already installed, skipping");
+                        continue;
+                    }
+
+                    state
+                        .formulae
+                        .all
+                        .remove(name)
+                        .map(models::Keg::Formula)
+                        .or_else(|| state.casks.all.remove(name).map(models::Keg::Cask))
+                };
+
+                let Some(keg) = keg else {
+                    bail!("keg {} not found", name);
+                };
+
+                kegs.push(keg);
+            }
+
+            Ok(kegs)
+        }
+
+        fn get_kegs_from_skim(&self, state: State) -> anyhow::Result<Vec<models::Keg>> {
+            let mut non_installed: Vec<Keg> = Vec::with_capacity(state.formulae.all.len() + state.casks.all.len());
+
+            for formula in state.formulae.all.into_values() {
+                if !state.formulae.installed.contains_key(&formula.base.name) {
+                    non_installed.push(formula.into());
+                }
+            }
+
+            for cask in state.casks.all.into_values() {
+                if !state.casks.installed.contains_key(&cask.base.token) {
+                    non_installed.push(cask.into());
+                }
+            }
+
+            let selected = select_skim(non_installed, "Install", true)?
+                .into_iter()
+                .map(|k| k.0)
+                .collect();
+
+            Ok(selected)
+        }
+    }
+
+    #[derive(Clone)]
+    struct Keg(models::Keg);
+
+    impl From<models::formula::Formula> for Keg {
+        fn from(value: models::formula::Formula) -> Self {
+            Keg(value.into())
+        }
+    }
+
+    impl From<models::cask::Cask> for Keg {
+        fn from(value: models::cask::Cask) -> Self {
+            Keg(value.into())
+        }
+    }
+
+    impl Deref for Keg {
+        type Target = models::Keg;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+
+    impl SkimItem for Keg {
+        fn text(&self) -> Cow<str> {
+            match &self.0 {
+                models::Keg::Formula(formula) => Cow::Borrowed(&formula.base.name),
+                models::Keg::Cask(cask) => Cow::Borrowed(&cask.base.token),
+            }
+        }
+
+        fn preview(&self, _context: PreviewContext) -> ItemPreview {
+            let mut buf = Vec::new();
+
+            match &self.0 {
+                models::Keg::Formula(formula) => info_formula(&mut buf, formula, None).unwrap(),
+                models::Keg::Cask(cask) => info_cask(&mut buf, cask, None).unwrap()
+            };
+
+            let preview = String::from_utf8(buf).unwrap();
+
+            ItemPreview::AnsiText(preview)
+        }
+    }
+}
+
+pub mod uninstall {
+    use std::borrow::Cow;
+
+    use anyhow::bail;
+    use clap::Args;
+    use skim::{ItemPreview, PreviewContext, SkimItem};
+
+    use brewer_core::models;
+    use brewer_engine::{Engine, State};
+
+    use crate::cli::{info_cask, info_formula, select_skim};
+
+    #[derive(Args)]
+    pub struct Uninstall {
+        pub names: Vec<String>,
+
+        #[clap(short, long, action, group = "type")]
+        pub formula: bool,
+
+        #[clap(short, long, action, group = "type")]
+        pub cask: bool,
+    }
+
+    impl Uninstall {
+        pub fn run(&self, mut engine: Engine) -> anyhow::Result<()> {
+            let state = engine.cache_or_latest()?;
+
+            let kegs = self.get_kegs(state)?;
+
+            if kegs.is_empty() {
+                Ok(())
+            } else {
+                engine.uninstall(kegs
+                    .into_iter()
+                    .map(|k| match k {
+                        Keg::Formula(formula) => formula.upstream.into(),
+                        Keg::Cask(cask) => cask.upstream.into()
+                    })
+                    .collect())?;
+
+                Ok(())
+            }
+        }
+
+        fn get_kegs(&self, state: State) -> anyhow::Result<Vec<Keg>> {
+            if self.names.is_empty() {
+                self.get_kegs_from_skim(state)
+            } else {
+                self.get_kegs_from_args(state)
+            }
+        }
+
+        fn get_kegs_from_args(&self, mut state: State) -> anyhow::Result<Vec<Keg>> {
+            let mut kegs = Vec::new();
+
+            for name in &self.names {
+                let keg = if self.formula {
+                    state.formulae.installed.remove(name).map(Keg::Formula)
+                } else if self.cask {
+                    state.casks.installed.remove(name).map(Keg::Cask)
+                } else {
+                    state
+                        .formulae
+                        .installed
+                        .remove(name)
+                        .map(Keg::Formula)
+                        .or_else(|| state.casks.installed.remove(name).map(Keg::Cask))
+                };
+
+                let Some(keg) = keg else {
+                    bail!("keg {} is not installed", name);
+                };
+
+                kegs.push(keg);
+            }
+
+            Ok(kegs)
+        }
+
+        fn get_kegs_from_skim(&self, state: State) -> anyhow::Result<Vec<Keg>> {
+            let mut installed: Vec<Keg> = Vec::with_capacity(state.formulae.installed.len() + state.casks.installed.len());
+
+            for formula in state.formulae.installed.into_values().filter(|f| f.receipt.installed_on_request) {
+                installed.push(formula.into());
+            }
+
+            for cask in state.casks.installed.into_values() {
+                installed.push(cask.into());
+            }
+
+            let selected = select_skim(installed, "Uninstall", true)?
+                .into_iter()
+                .collect();
+
+            Ok(selected)
+        }
+    }
+
+    #[derive(Clone)]
+    pub enum Keg {
+        Formula(models::formula::installed::Formula),
+        Cask(models::cask::installed::Cask),
+    }
+
+    impl From<models::formula::installed::Formula> for Keg {
+        fn from(value: models::formula::installed::Formula) -> Self {
+            Keg::Formula(value)
+        }
+    }
+
+    impl From<models::cask::installed::Cask> for Keg {
+        fn from(value: models::cask::installed::Cask) -> Self {
+            Keg::Cask(value)
+        }
+    }
+
+    impl SkimItem for Keg {
+        fn text(&self) -> Cow<str> {
+            match &self {
+                Keg::Formula(formula) => Cow::Borrowed(&formula.upstream.base.name),
+                Keg::Cask(cask) => Cow::Borrowed(&cask.upstream.base.token),
+            }
+        }
+
+        fn preview(&self, _context: PreviewContext) -> ItemPreview {
+            let mut buf = Vec::new();
+
+            match &self {
+                Keg::Formula(formula) => info_formula(&mut buf, &formula.upstream, Some(formula)).unwrap(),
+                Keg::Cask(cask) => info_cask(&mut buf, &cask.upstream, Some(cask)).unwrap()
+            };
+
+            let preview = String::from_utf8(buf).unwrap();
+
+            ItemPreview::AnsiText(preview)
+        }
+    }
+}
+
+fn select_skim<T, I>(items: I, header: &str, multi: bool) -> anyhow::Result<Vec<T>>
+    where
+        T: SkimItem + Clone,
+        I: IntoIterator<Item=T>
+{
+    let options = SkimOptionsBuilder::default()
+        .multi(multi)
+        .preview(Some("")) // preview should be specified to enable preview window
+        .preview_window(Some("60%"))
+        .header(Some(header))
+        .build()?;
+
+    let (tx, rx): (SkimItemSender, SkimItemReceiver) = unbounded();
+
+
+    for item in items.into_iter() {
+        tx.send(Arc::new(item))?;
+    }
+
+    drop(tx);
+
+    match Skim::run_with(&options, Some(rx)) {
+        Some(output) => {
+            if output.is_abort {
+                return Ok(Vec::new());
+            }
+
+            let mut selected = Vec::new();
+
+            for item in output.selected_items {
+                let item: T = (*item).as_any().downcast_ref::<T>().unwrap().to_owned();
+
+                selected.push(item);
+            }
+
+            Ok(selected)
+        }
+        None => Ok(Vec::new())
     }
 }

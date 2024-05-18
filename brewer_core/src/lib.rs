@@ -5,6 +5,7 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::process::Command;
 
+use anyhow::anyhow;
 use derive_builder::Builder;
 use serde::Deserialize;
 
@@ -56,7 +57,92 @@ impl Brew {
     const JSON_FLAG: &'static str = "--json=v2";
 
     fn brew(&self) -> Command {
-        Command::new(self.path.clone())
+        let mut command = Command::new(self.path.clone());
+
+        command.env("HOMEBREW_NO_AUTO_UPDATE", "1");
+        command.env("HOMEBREW_NO_ENV_HINTS", "1");
+
+        command
+    }
+
+    pub fn install(&self, kegs: Vec<Keg>) -> anyhow::Result<()> {
+        let mut formulae: Vec<formula::Formula> = Vec::with_capacity(kegs.len());
+        let mut casks: Vec<cask::Cask> = Vec::with_capacity(kegs.len());
+
+        for keg in kegs {
+            match keg {
+                Keg::Formula(formula) => formulae.push(formula),
+                Keg::Cask(cask) => casks.push(cask)
+            };
+        }
+
+        if !formulae.is_empty() {
+            let status = self
+                .brew()
+                .arg("install")
+                .arg("--formulae")
+                .args(formulae.into_iter().map(|f| f.base.name))
+                .status()?;
+
+            if !status.success() {
+                return Err(anyhow!("failed to install formulae"));
+            }
+        }
+
+        if !casks.is_empty() {
+            let status = self
+                .brew()
+                .arg("install")
+                .arg("--casks")
+                .args(casks.into_iter().map(|c| c.base.token))
+                .status()?;
+
+            if !status.success() {
+                return Err(anyhow!("failed to install casks"));
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn uninstall(&self, kegs: Vec<Keg>) -> anyhow::Result<()> {
+        let mut formulae: Vec<formula::Formula> = Vec::with_capacity(kegs.len());
+        let mut casks: Vec<cask::Cask> = Vec::with_capacity(kegs.len());
+
+        for keg in kegs {
+            match keg {
+                Keg::Formula(formula) => formulae.push(formula),
+                Keg::Cask(cask) => casks.push(cask)
+            };
+        }
+
+        if !formulae.is_empty() {
+            let status = self
+                .brew()
+                .arg("uninstall")
+                .arg("--formulae")
+                .args(formulae.into_iter().map(|f| f.base.name))
+                .status()?;
+
+            if !status.success() {
+                return Err(anyhow!("failed to uninstall formulae"));
+            }
+        }
+
+        if !casks.is_empty() {
+            let status = self
+                .brew()
+                .arg("uninstall")
+                .arg("--casks")
+                .args(casks.into_iter().map(|c| c.base.token))
+                .status()?;
+
+            if !status.success() {
+                return Err(anyhow!("failed to uninstall casks"));
+            }
+        }
+
+        Ok(())
     }
 
     pub fn analytics(&self) -> anyhow::Result<formula::analytics::Store> {
@@ -130,7 +216,7 @@ impl Brew {
             }).collect(),
         };
 
-        let installed = self.eval_installed(&all)?;
+        let installed = self.installed(&all)?;
 
         Ok(State {
             formulae: formula::State {
@@ -144,7 +230,7 @@ impl Brew {
         })
     }
 
-    pub fn eval_installed(&self, all: &State<formula::Store, cask::Store>) -> anyhow::Result<State<formula::installed::Store, cask::installed::Store>> {
+    pub fn installed(&self, all: &State<formula::Store, cask::Store>) -> anyhow::Result<State<formula::installed::Store, cask::installed::Store>> {
         let formulae = self.eval_installed_formulae(&all.formulae)?;
         let casks = self.eval_installed_casks(&all.casks)?;
 
@@ -264,7 +350,7 @@ impl Brew {
         name.starts_with('.')
     }
 
-    pub fn eval_all(&self) -> anyhow::Result<State<formula::base::Store, cask::base::Store>> {
+    fn eval_all(&self) -> anyhow::Result<State<formula::base::Store, cask::base::Store>> {
         let mut command = self.brew();
 
         let command = command
