@@ -726,6 +726,10 @@ pub mod install {
 
         #[clap(short, long, action, group = "type")]
         pub cask: bool,
+
+        /// Confirm
+        #[clap(short, long, action)]
+        pub yes: bool,
     }
 
     impl Install {
@@ -737,7 +741,7 @@ pub mod install {
             if kegs.is_empty() {
                 Ok(())
             } else {
-                if plan(&kegs)? {
+                if self.yes || plan(&kegs)? {
                     engine.install(kegs)?;
                 }
 
@@ -916,15 +920,19 @@ pub mod install {
 
 pub mod uninstall {
     use std::borrow::Cow;
+    use std::io::{BufWriter, Write};
 
     use anyhow::bail;
     use clap::Args;
+    use colored::Colorize;
+    use inquire::{Confirm, InquireError};
     use skim::{ItemPreview, PreviewContext, SkimItem};
 
     use brewer_core::models;
     use brewer_engine::{Engine, State};
 
     use crate::cli::{info_cask, info_formula, select_skim};
+    use crate::pretty;
 
     #[derive(Args)]
     pub struct Uninstall {
@@ -935,6 +943,10 @@ pub mod uninstall {
 
         #[clap(short, long, action, group = "type")]
         pub cask: bool,
+
+        /// Confirm
+        #[clap(short, long, action)]
+        pub yes: bool,
     }
 
     impl Uninstall {
@@ -946,13 +958,17 @@ pub mod uninstall {
             if kegs.is_empty() {
                 Ok(())
             } else {
-                engine.uninstall(kegs
+                let kegs = kegs
                     .into_iter()
                     .map(|k| match k {
                         Keg::Formula(formula) => formula.upstream.into(),
                         Keg::Cask(cask) => cask.upstream.into()
                     })
-                    .collect())?;
+                    .collect();
+
+                if self.yes || plan(&kegs)? {
+                    engine.uninstall(kegs)?;
+                }
 
                 Ok(())
             }
@@ -1009,6 +1025,51 @@ pub mod uninstall {
                 .collect();
 
             Ok(selected)
+        }
+    }
+
+
+    fn plan(kegs: &Vec<models::Keg>) -> anyhow::Result<bool> {
+        let mut w = BufWriter::new(std::io::stderr());
+
+        writeln!(w, "{}", pretty::header("The following kegs will be uninstalled"))?;
+
+        for keg in kegs {
+            match &keg {
+                models::Keg::Formula(f) => writeln!(w, "{} {} (Formula)", f.base.name.cyan(), f.base.versions.stable)?,
+                models::Keg::Cask(c) => writeln!(w, "{} {} (Cask)", c.base.token.cyan(), c.base.version)?,
+            }
+        }
+
+        writeln!(w)?;
+
+        let mut executables: Vec<String> = Vec::new();
+
+        for k in kegs {
+            if let models::Keg::Formula(f) = &k {
+                for e in &f.executables {
+                    executables.push(e.purple().to_string());
+                }
+            }
+        }
+
+        if !executables.is_empty() {
+            writeln!(w, "{}", pretty::header("The following executables will be removed"))?;
+            writeln!(w, "{}", executables.join(" "))?;
+            writeln!(w)?;
+        }
+
+        w.flush()?;
+
+        let result = Confirm::new("Proceed?").with_default(false).prompt();
+
+
+        match result {
+            Ok(value) => Ok(value),
+            Err(e) => match e {
+                InquireError::OperationCanceled => Ok(false),
+                e => Err(e.into())
+            }
         }
     }
 
