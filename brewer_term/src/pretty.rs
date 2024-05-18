@@ -2,6 +2,7 @@ use colored::Colorize;
 use prettytable::{cell, Row, Table};
 use prettytable::format::consts::FORMAT_CLEAN;
 
+#[inline]
 pub fn header(text: &str) -> String {
     const ARROW: &str = "==>";
 
