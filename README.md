@@ -1,7 +1,7 @@
 # Brewer 🍺
 
 An extremly fast [homebrew](https://brew.sh/) (macOS & Linux package manager)
-overlay with extra features.
+CLI wrapper with extra features.
 
 This is a WIP, alpha, early-stage, etc. project. A lot is missing and bugs are
 expected.
@@ -15,6 +15,7 @@ expected.
   equivalent)
 - Much faster than `brew search` (uses [nucleo] crate for non-interactive fuzzy
   search)
+- Show plan before installing / uninstall kegs
 
 ## Install
 
