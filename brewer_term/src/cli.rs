@@ -705,7 +705,6 @@ pub mod install {
     use std::io::{BufWriter, Write};
     use std::ops::Deref;
 
-    use anyhow::bail;
     use clap::Args;
     use colored::Colorize;
     use inquire::{Confirm, InquireError};
@@ -763,26 +762,26 @@ pub mod install {
             for name in &self.names {
                 let keg = if self.formula {
                     if state.formulae.installed.contains_key(name) {
-                        println!("formula {name} is already installed, skipping");
+                        println!("{}", pretty::header(format!("Formula {name} is already installed, skipping").as_str()));
                         continue;
                     }
 
                     state.formulae.all.remove(name).map(models::Keg::Formula)
                 } else if self.cask {
                     if state.casks.installed.contains_key(name) {
-                        println!("cask {name} is already installed, skipping");
+                        println!("{}", pretty::header(format!("Cask {name} is already installed, skipping").as_str()));
                         continue;
                     }
 
                     state.casks.all.remove(name).map(models::Keg::Cask)
                 } else {
                     if state.formulae.installed.contains_key(name) {
-                        println!("formula {name} is already installed, skipping");
+                        println!("{}", pretty::header(format!("Formula {name} is already installed, skipping").as_str()));
                         continue;
                     }
 
                     if state.casks.installed.contains_key(name) {
-                        println!("cask {name} is already installed, skipping");
+                        println!("{}", pretty::header(format!("Cask {name} is already installed, skipping").as_str()));
                         continue;
                     }
 
@@ -795,7 +794,8 @@ pub mod install {
                 };
 
                 let Some(keg) = keg else {
-                    bail!("keg {} not found", name);
+                    println!("{}", pretty::header(format!("Unknown formula or cask {name}, skipping").as_str()));
+                    continue;
                 };
 
                 kegs.push(keg);
