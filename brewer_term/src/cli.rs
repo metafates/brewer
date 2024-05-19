@@ -11,6 +11,7 @@ use brewer_core::models;
 use brewer_engine::{Engine, State};
 
 use crate::pretty;
+use crate::pretty::header;
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -279,7 +280,7 @@ impl List {
     }
 
     fn list_formulae(&self, w: &mut impl Write, max_width: u16, formulae: models::formula::installed::Store) -> anyhow::Result<()> {
-        writeln!(w, "{}", pretty::header("Formulae"))?;
+        writeln!(w, "{}", header::primary!("Formulae"))?;
         let mut installed: Vec<_> = formulae
             .into_values()
             .filter_map(|f| {
@@ -315,7 +316,7 @@ impl List {
     }
 
     fn list_casks(&self, w: &mut impl Write, max_width: u16, casks: models::cask::installed::Store) -> anyhow::Result<()> {
-        writeln!(w, "{}", pretty::header("Casks"))?;
+        writeln!(w, "{}", header::primary!("Casks"))?;
 
         let mut installed: Vec<_> = casks
             .into_values()
@@ -416,7 +417,7 @@ impl Info {
 }
 
 fn info_formula(mut buf: impl Write, formula: &models::formula::Formula, installed: Option<&models::formula::installed::Formula>) -> anyhow::Result<()> {
-    writeln!(buf, "{} {} (Cask)", pretty::header(&formula.base.name), formula.base.versions.stable)?;
+    writeln!(buf, "{}", header::primary!("{} {} (Cask)", &formula.base.name, formula.base.versions.stable))?;
     writeln!(buf, "From {}", formula.base.tap.yellow())?;
 
     if let Some(installed) = installed {
@@ -456,7 +457,7 @@ fn info_formula(mut buf: impl Write, formula: &models::formula::Formula, install
 }
 
 fn info_cask(buf: &mut impl Write, cask: &models::cask::Cask, installed: Option<&models::cask::installed::Cask>) -> anyhow::Result<()> {
-    writeln!(buf, "{} {} (Formula)", pretty::header(&cask.base.token), cask.base.version)?;
+    writeln!(buf, "{}", header::primary!("{} {} (Formula)", &cask.base.token, cask.base.version))?;
     writeln!(buf, "From {}", cask.base.tap.yellow())?;
     writeln!(buf)?;
 
@@ -497,6 +498,7 @@ pub mod search {
 
     use crate::cli::{info_cask, info_formula, select_skim};
     use crate::pretty;
+    use crate::pretty::header;
 
     #[derive(Args)]
     pub struct Search {
@@ -580,12 +582,12 @@ pub mod search {
 
             let mut buf = BufWriter::new(std::io::stdout());
 
-            writeln!(buf, "{}", pretty::header("Formulae"))?;
+            writeln!(buf, "{}", header::primary!("Formulae"))?;
             formulae.print(&mut buf)?;
 
             writeln!(buf)?;
 
-            writeln!(buf, "{}", pretty::header("Casks"))?;
+            writeln!(buf, "{}", header::primary!("Casks"))?;
             casks.print(&mut buf)?;
 
             Ok(true)
@@ -714,7 +716,7 @@ pub mod install {
     use brewer_engine::{Engine, State};
 
     use crate::cli::{info_cask, info_formula, select_skim};
-    use crate::pretty;
+    use crate::pretty::header;
 
     #[derive(Args)]
     pub struct Install {
@@ -762,26 +764,26 @@ pub mod install {
             for name in &self.names {
                 let keg = if self.formula {
                     if state.formulae.installed.contains_key(name) {
-                        println!("{}", pretty::header(format!("Formula {name} is already installed, skipping").as_str()));
+                        println!("{}", header::warning!("Formula {name} is already installed, skipping"));
                         continue;
                     }
 
                     state.formulae.all.remove(name).map(models::Keg::Formula)
                 } else if self.cask {
                     if state.casks.installed.contains_key(name) {
-                        println!("{}", pretty::header(format!("Cask {name} is already installed, skipping").as_str()));
+                        println!("{}", header::warning!("Cask {name} is already installed, skipping"));
                         continue;
                     }
 
                     state.casks.all.remove(name).map(models::Keg::Cask)
                 } else {
                     if state.formulae.installed.contains_key(name) {
-                        println!("{}", pretty::header(format!("Formula {name} is already installed, skipping").as_str()));
+                        println!("{}", header::warning!("Formula {name} is already installed, skipping"));
                         continue;
                     }
 
                     if state.casks.installed.contains_key(name) {
-                        println!("{}", pretty::header(format!("Cask {name} is already installed, skipping").as_str()));
+                        println!("{}", header::warning!("Cask {name} is already installed, skipping"));
                         continue;
                     }
 
@@ -794,7 +796,7 @@ pub mod install {
                 };
 
                 let Some(keg) = keg else {
-                    println!("{}", pretty::header(format!("Unknown formula or cask {name}, skipping").as_str()));
+                    println!("{}", header::warning!("Unknown formula or cask {name}, skipping"));
                     continue;
                 };
 
@@ -831,7 +833,7 @@ pub mod install {
     fn plan(kegs: &Vec<models::Keg>) -> anyhow::Result<bool> {
         let mut w = BufWriter::new(std::io::stderr());
 
-        writeln!(w, "{}", pretty::header("The following kegs will be installed"))?;
+        writeln!(w, "{}", header::primary!("The following kegs will be installed"))?;
 
         for keg in kegs {
             match &keg {
@@ -853,7 +855,7 @@ pub mod install {
         }
 
         if !executables.is_empty() {
-            writeln!(w, "{}", pretty::header("The following executables will be provided"))?;
+            writeln!(w, "{}", header::primary!("The following executables will be provided"))?;
             writeln!(w, "{}", executables.join(" "))?;
             writeln!(w)?;
         }
@@ -922,7 +924,6 @@ pub mod uninstall {
     use std::borrow::Cow;
     use std::io::{BufWriter, Write};
 
-    use anyhow::bail;
     use clap::Args;
     use colored::Colorize;
     use inquire::{Confirm, InquireError};
@@ -932,7 +933,7 @@ pub mod uninstall {
     use brewer_engine::{Engine, State};
 
     use crate::cli::{info_cask, info_formula, select_skim};
-    use crate::pretty;
+    use crate::pretty::header;
 
     #[derive(Args)]
     pub struct Uninstall {
@@ -987,8 +988,18 @@ pub mod uninstall {
 
             for name in &self.names {
                 let keg = if self.formula {
+                    if !state.formulae.installed.contains_key(name) {
+                        println!("{}", header::warning!("Formula {name} is not installed, skipping"));
+                        continue;
+                    }
+
                     state.formulae.installed.remove(name).map(Keg::Formula)
                 } else if self.cask {
+                    if !state.casks.installed.contains_key(name) {
+                        println!("{}", header::warning!("Cask {name} is not installed, skipping"));
+                        continue;
+                    }
+
                     state.casks.installed.remove(name).map(Keg::Cask)
                 } else {
                     state
@@ -1000,7 +1011,8 @@ pub mod uninstall {
                 };
 
                 let Some(keg) = keg else {
-                    bail!("keg {} is not installed", name);
+                    println!("{}", header::warning!("Formula or cask {name} is not installed skipping"));
+                    continue;
                 };
 
                 kegs.push(keg);
@@ -1032,7 +1044,7 @@ pub mod uninstall {
     fn plan(kegs: &Vec<models::Keg>) -> anyhow::Result<bool> {
         let mut w = BufWriter::new(std::io::stderr());
 
-        writeln!(w, "{}", pretty::header("The following kegs will be uninstalled"))?;
+        writeln!(w, "{}", header::primary!("The following kegs will be uninstalled"))?;
 
         for keg in kegs {
             match &keg {
@@ -1054,7 +1066,7 @@ pub mod uninstall {
         }
 
         if !executables.is_empty() {
-            writeln!(w, "{}", pretty::header("The following executables will be removed"))?;
+            writeln!(w, "{}", header::primary!("The following executables will be removed"))?;
             writeln!(w, "{}", executables.join(" "))?;
             writeln!(w)?;
         }

@@ -2,11 +2,40 @@ use colored::Colorize;
 use prettytable::{cell, Row, Table};
 use prettytable::format::consts::FORMAT_CLEAN;
 
-#[inline]
-pub fn header(text: &str) -> String {
-    const ARROW: &str = "==>";
+pub mod header {
+    macro_rules! primary {
+        ($($arg:tt)*) => {{
+            use colored::Colorize;
 
-    format!("{} {text}", ARROW.truecolor(144, 168, 89))
+            let res = format!($($arg)*);
+
+            format!("{} {res}", "==>".truecolor(144, 168, 89))
+        }}
+    }
+
+    macro_rules! warning {
+        ($($arg:tt)*) => {{
+            use colored::Colorize;
+
+            let res = format!($($arg)*);
+
+            format!("{} {res}", "==>".yellow())
+        }}
+    }
+
+    macro_rules! error {
+        ($($arg:tt)*) => {{
+            use colored::Colorize;
+
+            let res = format!($($arg)*);
+
+            format!("{} {res}", "==>".red())
+        }}
+    }
+
+    pub(crate) use primary;
+    pub(crate) use warning;
+    pub(crate) use error;
 }
 
 pub fn bool(b: bool) -> String {

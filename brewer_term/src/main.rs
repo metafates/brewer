@@ -136,7 +136,7 @@ fn main() {
     match run() {
         Ok(success) => if success { exit(0) } else { exit(1) },
         Err(e) => {
-            eprintln!("error: {}", e);
+            eprintln!("{}", pretty::header::error!("{e}"));
             exit(1)
         }
     }
