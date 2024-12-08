@@ -387,8 +387,10 @@ impl Info {
 
     pub fn handle_formula(&self, formula: &models::formula::Formula, installed: Option<&models::formula::installed::Formula>) -> anyhow::Result<()> {
         if self.open_homepage {
-            open::that_detached(&formula.base.homepage)?;
-            return Ok(());
+            if let Some(homepage) = &formula.base.homepage {
+                open::that_detached(homepage)?;
+                return Ok(());
+            }
         }
 
         let mut buf = BufWriter::new(std::io::stdout());
@@ -402,8 +404,10 @@ impl Info {
 
     pub fn handle_cask(&self, cask: &models::cask::Cask, installed: Option<&models::cask::installed::Cask>) -> anyhow::Result<()> {
         if self.open_homepage {
-            open::that_detached(&cask.base.homepage)?;
-            return Ok(());
+            if let Some(homepage) = &cask.base.homepage {
+                open::that_detached(homepage)?;
+                return Ok(());
+            }
         }
 
         let mut buf = BufWriter::new(std::io::stdout());
@@ -425,11 +429,15 @@ fn info_formula(mut buf: impl Write, formula: &models::formula::Formula, install
         writeln!(buf, "Installed {} {}", installed.receipt.source.version(), pretty::bool(true))?;
     }
 
+    if let Some(homepage) = &formula.base.homepage {
+        writeln!(buf)?;
+        writeln!(buf, "{}", homepage.underline().blue())?;
+    }
 
-    writeln!(buf)?;
-    writeln!(buf, "{}", formula.base.homepage.underline().blue())?;
-    writeln!(buf)?;
-    writeln!(buf, "{}", formula.base.desc.italic())?;
+    if let Some(desc) = &formula.base.desc {
+        writeln!(buf)?;
+        writeln!(buf, "{}", desc.italic())?;
+    }
 
     if !formula.executables.is_empty() {
         writeln!(buf)?;
@@ -469,9 +477,10 @@ fn info_cask(buf: &mut impl Write, cask: &models::cask::Cask, installed: Option<
         writeln!(buf)?;
     }
 
-    writeln!(buf, "{}", cask.base.homepage.underline().blue())?;
-    writeln!(buf)?;
-
+    if let Some(homepage) = &cask.base.homepage {
+        writeln!(buf, "{}", homepage.underline().blue())?;
+        writeln!(buf)?;
+    }
 
     let desc = if let Some(desc) = &cask.base.desc {
         desc
