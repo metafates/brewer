@@ -43,10 +43,10 @@ pub struct Settings {
 impl Settings {
     fn config_dir() -> PathBuf {
         #[cfg(target_os = "macos")]
-            let base = dirs::home_dir().map(|p| p.join(".config"));
+        let base = dirs::home_dir().map(|p| p.join(".config"));
 
         #[cfg(not(target_os = "macos"))]
-            let base = dirs::config_local_dir();
+        let base = dirs::config_local_dir();
 
         base.map(|p| p.join("brewer")).unwrap_or(".".into())
     }
@@ -64,3 +64,4 @@ impl Settings {
         settings.try_deserialize()
     }
 }
+

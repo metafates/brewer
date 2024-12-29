@@ -4,6 +4,7 @@ use clap::Parser;
 
 use brewer_core::Brew;
 use brewer_engine::Engine;
+use log::LevelFilter;
 
 use crate::cli::{Cli, Commands};
 use crate::settings::AutoUpdate;
@@ -12,8 +13,14 @@ mod cli;
 mod pretty;
 mod settings;
 
+fn setup_logger(level: LevelFilter) {
+    env_logger::builder().filter_level(level).init();
+}
+
 fn run() -> anyhow::Result<bool> {
     let c = Cli::parse();
+
+    setup_logger(c.verbose.log_level_filter());
 
     match c.command {
         Commands::Which(cmd) => {
@@ -134,7 +141,13 @@ fn get_engine(settings: settings::Settings) -> anyhow::Result<Engine> {
 
 fn main() {
     match run() {
-        Ok(success) => if success { exit(0) } else { exit(1) },
+        Ok(success) => {
+            if success {
+                exit(0)
+            } else {
+                exit(1)
+            }
+        }
         Err(e) => {
             eprintln!("{}", pretty::header::error!("{e}"));
             exit(1)

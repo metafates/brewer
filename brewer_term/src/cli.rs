@@ -2,6 +2,7 @@ use std::io::{BufWriter, Write};
 use std::sync::Arc;
 
 use clap::{Args, Parser, Subcommand};
+use clap_verbosity::Verbosity;
 use colored::Colorize;
 use skim::prelude::{unbounded, SkimOptionsBuilder};
 use skim::{Skim, SkimItem, SkimItemReceiver, SkimItemSender};
@@ -18,6 +19,9 @@ use crate::pretty::header;
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
+
+    #[command(flatten)]
+    pub verbose: Verbosity,
 }
 
 #[derive(Subcommand)]
@@ -223,7 +227,7 @@ impl Update {
     pub fn run(&self, mut engine: Engine) -> anyhow::Result<()> {
         println!("Updating the database, this will take some time");
 
-        let state = engine.latest()?;
+        let state = engine.fetch_latest()?;
 
         engine.update_cache(&state)?;
 
@@ -1301,6 +1305,4 @@ where
     }
 }
 
-fn kegs_list() {
-
-}
+fn kegs_list() {}

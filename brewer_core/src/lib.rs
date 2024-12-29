@@ -7,6 +7,7 @@ use std::process::Command;
 
 use anyhow::anyhow;
 use derive_builder::Builder;
+use log::info;
 use serde::Deserialize;
 
 use crate::models::*;
@@ -26,7 +27,8 @@ const DEFAULT_BREW_PREFIX: &str = "/usr/local";
 #[cfg(target_os = "linux")]
 const DEFAULT_BREW_PREFIX: &str = "/home/linuxbrew/.linuxbrew";
 
-const BREW_BIN_REGISTRY_URL: &str = "https://raw.githubusercontent.com/Homebrew/homebrew-command-not-found/master/executables.txt";
+const BREW_BIN_REGISTRY_URL: &str =
+    "https://raw.githubusercontent.com/Homebrew/homebrew-command-not-found/master/executables.txt";
 
 const BREW_ANALYTICS_URL: &str = "https://formulae.brew.sh/api/analytics/install/30d.json";
 
@@ -66,15 +68,7 @@ impl Brew {
     }
 
     pub fn install(&self, kegs: Vec<Keg>) -> anyhow::Result<()> {
-        let mut formulae: Vec<formula::Formula> = Vec::with_capacity(kegs.len());
-        let mut casks: Vec<cask::Cask> = Vec::with_capacity(kegs.len());
-
-        for keg in kegs {
-            match keg {
-                Keg::Formula(formula) => formulae.push(formula),
-                Keg::Cask(cask) => casks.push(cask)
-            };
-        }
+        let (formulae, casks) = split_kegs(kegs);
 
         if !formulae.is_empty() {
             let status = self
@@ -106,15 +100,7 @@ impl Brew {
     }
 
     pub fn uninstall(&self, kegs: Vec<Keg>) -> anyhow::Result<()> {
-        let mut formulae: Vec<formula::Formula> = Vec::with_capacity(kegs.len());
-        let mut casks: Vec<cask::Cask> = Vec::with_capacity(kegs.len());
-
-        for keg in kegs {
-            match keg {
-                Keg::Formula(formula) => formulae.push(formula),
-                Keg::Cask(cask) => casks.push(cask)
-            };
-        }
+        let (formulae, casks) = split_kegs(kegs);
 
         if !formulae.is_empty() {
             let status = self
@@ -178,7 +164,8 @@ impl Brew {
             };
 
             let name = &lhs[..index];
-            let executables: HashSet<String> = rhs.split_whitespace().map(|s| s.to_string()).collect();
+            let executables: HashSet<String> =
+                rhs.split_whitespace().map(|s| s.to_string()).collect();
 
             store.insert(name.to_string(), executables);
         }
@@ -192,28 +179,39 @@ impl Brew {
         let all = self.eval_all()?;
 
         let all: State<formula::Store, cask::Store> = State {
-            formulae: all.formulae.into_iter().map(|(name, base)| {
-                let executables = if let Some(e) = executables.get(&name) {
-                    e.clone()
-                } else {
-                    HashSet::new()
-                };
+            formulae: all
+                .formulae
+                .into_iter()
+                .map(|(name, base)| {
+                    let executables = if let Some(e) = executables.get(&name) {
+                        e.clone()
+                    } else {
+                        HashSet::new()
+                    };
 
-                let analytics = if let Some(a) = analytics.get(&name) {
-                    Some(a.clone())
-                } else {
-                    analytics.get(format!("{}/{}", base.tap, base.name).as_str()).cloned()
-                };
+                    let analytics = if let Some(a) = analytics.get(&name) {
+                        Some(a.clone())
+                    } else {
+                        analytics
+                            .get(format!("{}/{}", base.tap, base.name).as_str())
+                            .cloned()
+                    };
 
-                (name, formula::Formula {
-                    base,
-                    executables,
-                    analytics,
+                    (
+                        name,
+                        formula::Formula {
+                            base,
+                            executables,
+                            analytics,
+                        },
+                    )
                 })
-            }).collect(),
-            casks: all.casks.into_iter().map(|(name, base)| {
-                (name, cask::Cask { base })
-            }).collect(),
+                .collect(),
+            casks: all
+                .casks
+                .into_iter()
+                .map(|(name, base)| (name, cask::Cask { base }))
+                .collect(),
         };
 
         let installed = self.installed(&all)?;
@@ -230,7 +228,10 @@ impl Brew {
         })
     }
 
-    pub fn installed(&self, all: &State<formula::Store, cask::Store>) -> anyhow::Result<State<formula::installed::Store, cask::installed::Store>> {
+    pub fn installed(
+        &self,
+        all: &State<formula::Store, cask::Store>,
+    ) -> anyhow::Result<State<formula::installed::Store, cask::installed::Store>> {
         let formulae = self.eval_installed_formulae(&all.formulae)?;
         let casks = self.eval_installed_casks(&all.casks)?;
 
@@ -245,10 +246,13 @@ impl Brew {
                 continue;
             };
 
-            installed.insert(name, cask::installed::Cask {
-                upstream: cask.clone(),
-                versions,
-            });
+            installed.insert(
+                name,
+                cask::installed::Cask {
+                    upstream: cask.clone(),
+                    versions,
+                },
+            );
         }
 
         Ok(installed)
@@ -293,7 +297,10 @@ impl Brew {
         Ok(store)
     }
 
-    fn eval_installed_formulae(&self, store: &formula::Store) -> anyhow::Result<formula::installed::Store> {
+    fn eval_installed_formulae(
+        &self,
+        store: &formula::Store,
+    ) -> anyhow::Result<formula::installed::Store> {
         let mut installed = formula::installed::Store::new();
 
         for (name, receipt) in self.eval_installed_formulae_receipts()? {
@@ -301,10 +308,13 @@ impl Brew {
                 continue;
             };
 
-            installed.insert(name, formula::installed::Formula {
-                upstream: formula.clone(),
-                receipt,
-            });
+            installed.insert(
+                name,
+                formula::installed::Formula {
+                    upstream: formula.clone(),
+                    receipt,
+                },
+            );
         }
 
         Ok(installed)
@@ -329,9 +339,7 @@ impl Brew {
                 continue;
             }
 
-            let receipt_path = path
-                .canonicalize()?
-                .join("INSTALL_RECEIPT.json");
+            let receipt_path = path.canonicalize()?.join("INSTALL_RECEIPT.json");
 
             let mut file = File::open(receipt_path)?;
             let mut data = Vec::new();
@@ -353,10 +361,9 @@ impl Brew {
     fn eval_all(&self) -> anyhow::Result<State<formula::base::Store, cask::base::Store>> {
         let mut command = self.brew();
 
-        let command = command
-            .arg("info")
-            .arg("--eval-all")
-            .arg(Self::JSON_FLAG);
+        let command = command.arg("info").arg("--eval-all").arg(Self::JSON_FLAG);
+
+        info!("running {:?}", command);
 
         let output = command.output()?;
 
@@ -380,9 +387,20 @@ impl Brew {
             .map(|c| (c.token.clone(), c))
             .collect();
 
-        Ok(State {
-            formulae,
-            casks,
-        })
+        Ok(State { formulae, casks })
     }
+}
+
+fn split_kegs(kegs: Vec<Keg>) -> (Vec<formula::Formula>, Vec<cask::Cask>) {
+    let mut formulae: Vec<formula::Formula> = Vec::with_capacity(kegs.len());
+    let mut casks: Vec<cask::Cask> = Vec::with_capacity(kegs.len());
+
+    for keg in kegs {
+        match keg {
+            Keg::Formula(formula) => formulae.push(formula),
+            Keg::Cask(cask) => casks.push(cask),
+        };
+    }
+
+    (formulae, casks)
 }

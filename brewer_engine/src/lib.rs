@@ -3,7 +3,8 @@ use std::time::Duration;
 use chrono::Utc;
 use derive_builder::Builder;
 
-use brewer_core::{Brew, models};
+use brewer_core::{models, Brew};
+use log::info;
 
 use crate::store::Store;
 
@@ -47,10 +48,9 @@ impl Engine {
         let cache = self.cache()?;
 
         if self.cache_expired()? || cache.is_none() {
-            // TODO: replace this logger
-            println!("Updating the cache, this will take some time...");
+            info!("updating the cache, this will take some time");
 
-            let latest = self.latest()?;
+            let latest = self.fetch_latest()?;
 
             self.update_cache(&latest)?;
 
@@ -94,7 +94,7 @@ impl Engine {
 
                 Ok(last_update + cache_duration <= now)
             }
-            None => Ok(true)
+            None => Ok(true),
         }
     }
 
@@ -107,9 +107,10 @@ impl Engine {
         Ok(())
     }
 
-    pub fn latest(&self) -> anyhow::Result<State> {
+    pub fn fetch_latest(&self) -> anyhow::Result<State> {
         let state = self.brew.state()?;
 
         Ok(state)
     }
 }
+

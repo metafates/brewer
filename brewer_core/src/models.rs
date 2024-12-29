@@ -29,7 +29,7 @@ pub mod formula {
 
     use serde::{Deserialize, Serialize};
 
-    use crate::models::keg;
+    use super::keg;
 
     pub type Executables = keg::Store<HashSet<String>>;
     pub type State = keg::State<Formula, installed::Formula>;
@@ -154,7 +154,6 @@ pub mod formula {
             Head,
         }
 
-
         #[derive(Serialize, Deserialize, Clone)]
         pub struct Versions {
             pub stable: String,
@@ -166,7 +165,7 @@ pub mod formula {
 pub mod cask {
     use serde::{Deserialize, Serialize};
 
-    use crate::models::keg;
+    use super::keg;
 
     pub type State = keg::State<Cask, installed::Cask>;
     pub type Store = keg::Store<Cask>;
@@ -237,12 +236,10 @@ pub mod keg {
     use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Deserialize)]
-    pub struct State<A, I> {
-        pub all: Store<A>,
-        pub installed: Store<I>,
+    pub struct State<Regular, Installed> {
+        pub all: Store<Regular>,
+        pub installed: Store<Installed>,
     }
 
-    pub type Store<T> = HashMap<String, T>;
+    pub type Store<Keg> = HashMap<String, Keg>;
 }
-
-
