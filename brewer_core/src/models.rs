@@ -63,8 +63,8 @@ pub mod formula {
         pub struct Formula {
             pub name: String,
             pub tap: String,
-            pub desc: String,
-            pub homepage: String,
+            pub desc: Option<String>,
+            pub homepage: Option<String>,
             pub caveats: Option<String>,
 
             pub build_dependencies: Vec<String>,
@@ -197,7 +197,7 @@ pub mod cask {
             pub desc: Option<String>,
             pub version: String,
             pub caveats: Option<String>,
-            pub homepage: String,
+            pub homepage: Option<String>,
 
             pub deprecated: bool,
             pub deprecation_reason: Option<String>,
