@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use clap::{Args, Parser, Subcommand};
 use colored::Colorize;
+use skim::prelude::{unbounded, SkimOptionsBuilder};
 use skim::{Skim, SkimItem, SkimItemReceiver, SkimItemSender};
-use skim::prelude::{SkimOptionsBuilder, unbounded};
 use terminal_size::{terminal_size, Width};
 
 use brewer_core::models;
@@ -102,7 +102,9 @@ pub mod which {
                 return Ok(false);
             }
 
-            formulae.sort_unstable_by_key(|f| f.analytics.as_ref().map(|a| a.number).unwrap_or_default());
+            formulae.sort_unstable_by_key(|f| {
+                f.analytics.as_ref().map(|a| a.number).unwrap_or_default()
+            });
 
             let mut buf = BufWriter::new(std::io::stdout());
 
@@ -150,7 +152,6 @@ pub mod which {
             Ok(true)
         }
 
-
         fn run_skim(&self, state: &State) -> anyhow::Result<String> {
             let mut executables: HashMap<String, models::formula::Store> = HashMap::new();
 
@@ -173,10 +174,7 @@ pub mod which {
 
             let executables = executables
                 .into_iter()
-                .map(|(name, provided_by)| Executable {
-                    name,
-                    provided_by,
-                });
+                .map(|(name, provided_by)| Executable { name, provided_by });
 
             let selected = select_skim(executables, "Executables", false)?;
             let selected = selected.into_iter().map(|e| e.name).take(1).collect();
@@ -218,7 +216,6 @@ pub mod which {
     }
 }
 
-
 #[derive(Args)]
 pub struct Update {}
 
@@ -230,7 +227,11 @@ impl Update {
 
         engine.update_cache(&state)?;
 
-        println!("Database updated, found {} formulae and {} casks", state.formulae.all.len(), state.casks.all.len());
+        println!(
+            "Database updated, found {} formulae and {} casks",
+            state.formulae.all.len(),
+            state.casks.all.len()
+        );
 
         Ok(())
     }
@@ -279,7 +280,12 @@ impl List {
         Ok(())
     }
 
-    fn list_formulae(&self, w: &mut impl Write, max_width: u16, formulae: models::formula::installed::Store) -> anyhow::Result<()> {
+    fn list_formulae(
+        &self,
+        w: &mut impl Write,
+        max_width: u16,
+        formulae: models::formula::installed::Store,
+    ) -> anyhow::Result<()> {
         writeln!(w, "{}", header::primary!("Formulae"))?;
         let mut installed: Vec<_> = formulae
             .into_values()
@@ -315,13 +321,15 @@ impl List {
         Ok(())
     }
 
-    fn list_casks(&self, w: &mut impl Write, max_width: u16, casks: models::cask::installed::Store) -> anyhow::Result<()> {
+    fn list_casks(
+        &self,
+        w: &mut impl Write,
+        max_width: u16,
+        casks: models::cask::installed::Store,
+    ) -> anyhow::Result<()> {
         writeln!(w, "{}", header::primary!("Casks"))?;
 
-        let mut installed: Vec<_> = casks
-            .into_values()
-            .map(|v| v.upstream.base.token)
-            .collect();
+        let mut installed: Vec<_> = casks.into_values().map(|v| v.upstream.base.token).collect();
 
         installed.sort_unstable();
 
@@ -373,19 +381,23 @@ impl Info {
         }
 
         match state.formulae.all.get(&self.name) {
-            Some(formula) => self.handle_formula(formula, state.formulae.installed.get(&self.name))?,
-            None => {
-                match state.casks.all.get(&self.name) {
-                    Some(cask) => self.handle_cask(cask, state.casks.installed.get(&self.name))?,
-                    None => return Ok(false)
-                }
+            Some(formula) => {
+                self.handle_formula(formula, state.formulae.installed.get(&self.name))?
             }
+            None => match state.casks.all.get(&self.name) {
+                Some(cask) => self.handle_cask(cask, state.casks.installed.get(&self.name))?,
+                None => return Ok(false),
+            },
         };
 
         Ok(true)
     }
 
-    pub fn handle_formula(&self, formula: &models::formula::Formula, installed: Option<&models::formula::installed::Formula>) -> anyhow::Result<()> {
+    pub fn handle_formula(
+        &self,
+        formula: &models::formula::Formula,
+        installed: Option<&models::formula::installed::Formula>,
+    ) -> anyhow::Result<()> {
         if self.open_homepage {
             open::that_detached(&formula.base.homepage)?;
             return Ok(());
@@ -400,7 +412,11 @@ impl Info {
         Ok(())
     }
 
-    pub fn handle_cask(&self, cask: &models::cask::Cask, installed: Option<&models::cask::installed::Cask>) -> anyhow::Result<()> {
+    pub fn handle_cask(
+        &self,
+        cask: &models::cask::Cask,
+        installed: Option<&models::cask::installed::Cask>,
+    ) -> anyhow::Result<()> {
         if self.open_homepage {
             open::that_detached(&cask.base.homepage)?;
             return Ok(());
@@ -416,15 +432,31 @@ impl Info {
     }
 }
 
-fn info_formula(mut buf: impl Write, formula: &models::formula::Formula, installed: Option<&models::formula::installed::Formula>) -> anyhow::Result<()> {
-    writeln!(buf, "{}", header::primary!("{} {} (Cask)", &formula.base.name, formula.base.versions.stable))?;
+fn info_formula(
+    mut buf: impl Write,
+    formula: &models::formula::Formula,
+    installed: Option<&models::formula::installed::Formula>,
+) -> anyhow::Result<()> {
+    writeln!(
+        buf,
+        "{}",
+        header::primary!(
+            "{} {} (Cask)",
+            &formula.base.name,
+            formula.base.versions.stable
+        )
+    )?;
     writeln!(buf, "From {}", formula.base.tap.yellow())?;
 
     if let Some(installed) = installed {
         writeln!(buf)?;
-        writeln!(buf, "Installed {} {}", installed.receipt.source.version(), pretty::bool(true))?;
+        writeln!(
+            buf,
+            "Installed {} {}",
+            installed.receipt.source.version(),
+            pretty::bool(true)
+        )?;
     }
-
 
     writeln!(buf)?;
     writeln!(buf, "{}", formula.base.homepage.underline().blue())?;
@@ -449,15 +481,22 @@ fn info_formula(mut buf: impl Write, formula: &models::formula::Formula, install
             }
         }
 
-
         writeln!(buf)?;
     }
 
     Ok(())
 }
 
-fn info_cask(buf: &mut impl Write, cask: &models::cask::Cask, installed: Option<&models::cask::installed::Cask>) -> anyhow::Result<()> {
-    writeln!(buf, "{}", header::primary!("{} {} (Formula)", &cask.base.token, cask.base.version))?;
+fn info_cask(
+    buf: &mut impl Write,
+    cask: &models::cask::Cask,
+    installed: Option<&models::cask::installed::Cask>,
+) -> anyhow::Result<()> {
+    writeln!(
+        buf,
+        "{}",
+        header::primary!("{} {} (Formula)", &cask.base.token, cask.base.version)
+    )?;
     writeln!(buf, "From {}", cask.base.tap.yellow())?;
     writeln!(buf)?;
 
@@ -471,7 +510,6 @@ fn info_cask(buf: &mut impl Write, cask: &models::cask::Cask, installed: Option<
 
     writeln!(buf, "{}", cask.base.homepage.underline().blue())?;
     writeln!(buf)?;
-
 
     let desc = if let Some(desc) = &cask.base.desc {
         desc
@@ -511,27 +549,39 @@ pub mod search {
                 Some(name) => {
                     let mut matcher = nucleo_matcher::Matcher::new(nucleo_matcher::Config::DEFAULT);
 
-                    let atom = Atom::new(name, CaseMatching::Ignore, Normalization::Smart, AtomKind::Substring, false);
+                    let atom = Atom::new(
+                        name,
+                        CaseMatching::Ignore,
+                        Normalization::Smart,
+                        AtomKind::Substring,
+                        false,
+                    );
 
                     let formulae = atom.match_list(state.formulae.all.into_values(), &mut matcher);
-                    let mut formulae: Vec<_> = formulae.into_iter().map(|(formula, _)| {
-                        let installed = state.formulae.installed.get(&formula.base.name);
+                    let mut formulae: Vec<_> = formulae
+                        .into_iter()
+                        .map(|(formula, _)| {
+                            let installed = state.formulae.installed.get(&formula.base.name);
 
-                        Keg::Formula(formula, Box::new(installed.cloned()))
-                    }).collect();
+                            Keg::Formula(formula, Box::new(installed.cloned()))
+                        })
+                        .collect();
 
                     let casks = atom.match_list(state.casks.all.into_values(), &mut matcher);
-                    let mut casks: Vec<_> = casks.into_iter().map(|(cask, _)| {
-                        let installed = state.casks.installed.get(&cask.base.token);
+                    let mut casks: Vec<_> = casks
+                        .into_iter()
+                        .map(|(cask, _)| {
+                            let installed = state.casks.installed.get(&cask.base.token);
 
-                        Keg::Cask(cask, installed.cloned())
-                    }).collect();
+                            Keg::Cask(cask, installed.cloned())
+                        })
+                        .collect();
 
                     formulae.append(&mut casks);
 
                     formulae
                 }
-                None => self.run_skim(state)?
+                None => self.run_skim(state)?,
             };
 
             if kegs.is_empty() {
@@ -577,6 +627,9 @@ pub mod search {
                 }
             }
 
+            formulae.sort_unstable();
+            casks.sort_unstable();
+
             let formulae = pretty::table(&formulae, width);
             let casks = pretty::table(&casks, width);
 
@@ -598,7 +651,10 @@ pub mod search {
 
             for formula in state.formulae.all.into_values() {
                 let name = formula.base.name.clone();
-                let keg = Keg::Formula(formula, Box::new(state.formulae.installed.get(&name).cloned()));
+                let keg = Keg::Formula(
+                    formula,
+                    Box::new(state.formulae.installed.get(&name).cloned()),
+                );
 
                 kegs.push(keg);
             }
@@ -618,7 +674,10 @@ pub mod search {
 
     #[derive(Clone)]
     enum Keg {
-        Formula(models::formula::Formula, Box<Option<models::formula::installed::Formula>>),
+        Formula(
+            models::formula::Formula,
+            Box<Option<models::formula::installed::Formula>>,
+        ),
         Cask(models::cask::Cask, Option<models::cask::installed::Cask>),
     }
 
@@ -626,7 +685,7 @@ pub mod search {
         fn text(&self) -> Cow<str> {
             match self {
                 Keg::Formula(formula, _) => Cow::Borrowed(&formula.base.name),
-                Keg::Cask(cask, _) => Cow::Borrowed(&cask.base.token)
+                Keg::Cask(cask, _) => Cow::Borrowed(&cask.base.token),
             }
         }
 
@@ -634,7 +693,9 @@ pub mod search {
             let mut w = Vec::new();
 
             match self {
-                Keg::Formula(formula, installed) => info_formula(&mut w, formula, installed.as_ref().as_ref()).unwrap(),
+                Keg::Formula(formula, installed) => {
+                    info_formula(&mut w, formula, installed.as_ref().as_ref()).unwrap()
+                }
                 Keg::Cask(cask, installed) => info_cask(&mut w, cask, installed.as_ref()).unwrap(),
             };
 
@@ -660,13 +721,16 @@ pub mod paths {
     #[derive(Subcommand)]
     pub enum Commands {
         /// Show config path
-        Config
+        Config,
     }
 
     impl Paths {
         pub fn run(&self) {
             match self.command {
-                Commands::Config => println!("{}.toml", settings::Settings::config_file().to_string_lossy()),
+                Commands::Config => println!(
+                    "{}.toml",
+                    settings::Settings::config_file().to_string_lossy()
+                ),
             }
         }
     }
@@ -764,26 +828,38 @@ pub mod install {
             for name in &self.names {
                 let keg = if self.formula {
                     if state.formulae.installed.contains_key(name) {
-                        println!("{}", header::warning!("Formula {name} is already installed, skipping"));
+                        println!(
+                            "{}",
+                            header::warning!("Formula {name} is already installed, skipping")
+                        );
                         continue;
                     }
 
                     state.formulae.all.remove(name).map(models::Keg::Formula)
                 } else if self.cask {
                     if state.casks.installed.contains_key(name) {
-                        println!("{}", header::warning!("Cask {name} is already installed, skipping"));
+                        println!(
+                            "{}",
+                            header::warning!("Cask {name} is already installed, skipping")
+                        );
                         continue;
                     }
 
                     state.casks.all.remove(name).map(models::Keg::Cask)
                 } else {
                     if state.formulae.installed.contains_key(name) {
-                        println!("{}", header::warning!("Formula {name} is already installed, skipping"));
+                        println!(
+                            "{}",
+                            header::warning!("Formula {name} is already installed, skipping")
+                        );
                         continue;
                     }
 
                     if state.casks.installed.contains_key(name) {
-                        println!("{}", header::warning!("Cask {name} is already installed, skipping"));
+                        println!(
+                            "{}",
+                            header::warning!("Cask {name} is already installed, skipping")
+                        );
                         continue;
                     }
 
@@ -796,7 +872,10 @@ pub mod install {
                 };
 
                 let Some(keg) = keg else {
-                    println!("{}", header::warning!("Unknown formula or cask {name}, skipping"));
+                    println!(
+                        "{}",
+                        header::warning!("Unknown formula or cask {name}, skipping")
+                    );
                     continue;
                 };
 
@@ -807,7 +886,8 @@ pub mod install {
         }
 
         fn get_kegs_from_skim(&self, state: State) -> anyhow::Result<Vec<models::Keg>> {
-            let mut non_installed: Vec<Keg> = Vec::with_capacity(state.formulae.all.len() + state.casks.all.len());
+            let mut non_installed: Vec<Keg> =
+                Vec::with_capacity(state.formulae.all.len() + state.casks.all.len());
 
             for formula in state.formulae.all.into_values() {
                 if !state.formulae.installed.contains_key(&formula.base.name) {
@@ -833,12 +913,23 @@ pub mod install {
     fn plan(kegs: &Vec<models::Keg>) -> anyhow::Result<bool> {
         let mut w = BufWriter::new(std::io::stderr());
 
-        writeln!(w, "{}", header::primary!("The following kegs will be installed"))?;
+        writeln!(
+            w,
+            "{}",
+            header::primary!("The following kegs will be installed")
+        )?;
 
         for keg in kegs {
             match &keg {
-                models::Keg::Formula(f) => writeln!(w, "{} {} (Formula)", f.base.name.cyan(), f.base.versions.stable)?,
-                models::Keg::Cask(c) => writeln!(w, "{} {} (Cask)", c.base.token.cyan(), c.base.version)?,
+                models::Keg::Formula(f) => writeln!(
+                    w,
+                    "{} {} (Formula)",
+                    f.base.name.cyan(),
+                    f.base.versions.stable
+                )?,
+                models::Keg::Cask(c) => {
+                    writeln!(w, "{} {} (Cask)", c.base.token.cyan(), c.base.version)?
+                }
             }
         }
 
@@ -855,7 +946,11 @@ pub mod install {
         }
 
         if !executables.is_empty() {
-            writeln!(w, "{}", header::primary!("The following executables will be provided"))?;
+            writeln!(
+                w,
+                "{}",
+                header::primary!("The following executables will be provided")
+            )?;
             writeln!(w, "{}", executables.join(" "))?;
             writeln!(w)?;
         }
@@ -864,13 +959,12 @@ pub mod install {
 
         let result = Confirm::new("Proceed?").with_default(false).prompt();
 
-
         match result {
             Ok(value) => Ok(value),
             Err(e) => match e {
                 InquireError::OperationCanceled => Ok(false),
-                e => Err(e.into())
-            }
+                e => Err(e.into()),
+            },
         }
     }
 
@@ -910,7 +1004,7 @@ pub mod install {
 
             match &self.0 {
                 models::Keg::Formula(formula) => info_formula(&mut buf, formula, None).unwrap(),
-                models::Keg::Cask(cask) => info_cask(&mut buf, cask, None).unwrap()
+                models::Keg::Cask(cask) => info_cask(&mut buf, cask, None).unwrap(),
             };
 
             let preview = String::from_utf8(buf).unwrap();
@@ -963,7 +1057,7 @@ pub mod uninstall {
                     .into_iter()
                     .map(|k| match k {
                         Keg::Formula(formula) => formula.upstream.into(),
-                        Keg::Cask(cask) => cask.upstream.into()
+                        Keg::Cask(cask) => cask.upstream.into(),
                     })
                     .collect();
 
@@ -989,14 +1083,20 @@ pub mod uninstall {
             for name in &self.names {
                 let keg = if self.formula {
                     if !state.formulae.installed.contains_key(name) {
-                        println!("{}", header::warning!("Formula {name} is not installed, skipping"));
+                        println!(
+                            "{}",
+                            header::warning!("Formula {name} is not installed, skipping")
+                        );
                         continue;
                     }
 
                     state.formulae.installed.remove(name).map(Keg::Formula)
                 } else if self.cask {
                     if !state.casks.installed.contains_key(name) {
-                        println!("{}", header::warning!("Cask {name} is not installed, skipping"));
+                        println!(
+                            "{}",
+                            header::warning!("Cask {name} is not installed, skipping")
+                        );
                         continue;
                     }
 
@@ -1011,7 +1111,10 @@ pub mod uninstall {
                 };
 
                 let Some(keg) = keg else {
-                    println!("{}", header::warning!("Formula or cask {name} is not installed skipping"));
+                    println!(
+                        "{}",
+                        header::warning!("Formula or cask {name} is not installed skipping")
+                    );
                     continue;
                 };
 
@@ -1022,9 +1125,15 @@ pub mod uninstall {
         }
 
         fn get_kegs_from_skim(&self, state: State) -> anyhow::Result<Vec<Keg>> {
-            let mut installed: Vec<Keg> = Vec::with_capacity(state.formulae.installed.len() + state.casks.installed.len());
+            let mut installed: Vec<Keg> =
+                Vec::with_capacity(state.formulae.installed.len() + state.casks.installed.len());
 
-            for formula in state.formulae.installed.into_values().filter(|f| f.receipt.installed_on_request) {
+            for formula in state
+                .formulae
+                .installed
+                .into_values()
+                .filter(|f| f.receipt.installed_on_request)
+            {
                 installed.push(formula.into());
             }
 
@@ -1040,16 +1149,26 @@ pub mod uninstall {
         }
     }
 
-
     fn plan(kegs: &Vec<models::Keg>) -> anyhow::Result<bool> {
         let mut w = BufWriter::new(std::io::stderr());
 
-        writeln!(w, "{}", header::primary!("The following kegs will be uninstalled"))?;
+        writeln!(
+            w,
+            "{}",
+            header::primary!("The following kegs will be uninstalled")
+        )?;
 
         for keg in kegs {
             match &keg {
-                models::Keg::Formula(f) => writeln!(w, "{} {} (Formula)", f.base.name.cyan(), f.base.versions.stable)?,
-                models::Keg::Cask(c) => writeln!(w, "{} {} (Cask)", c.base.token.cyan(), c.base.version)?,
+                models::Keg::Formula(f) => writeln!(
+                    w,
+                    "{} {} (Formula)",
+                    f.base.name.cyan(),
+                    f.base.versions.stable
+                )?,
+                models::Keg::Cask(c) => {
+                    writeln!(w, "{} {} (Cask)", c.base.token.cyan(), c.base.version)?
+                }
             }
         }
 
@@ -1066,7 +1185,11 @@ pub mod uninstall {
         }
 
         if !executables.is_empty() {
-            writeln!(w, "{}", header::primary!("The following executables will be removed"))?;
+            writeln!(
+                w,
+                "{}",
+                header::primary!("The following executables will be removed")
+            )?;
             writeln!(w, "{}", executables.join(" "))?;
             writeln!(w)?;
         }
@@ -1075,13 +1198,12 @@ pub mod uninstall {
 
         let result = Confirm::new("Proceed?").with_default(false).prompt();
 
-
         match result {
             Ok(value) => Ok(value),
             Err(e) => match e {
                 InquireError::OperationCanceled => Ok(false),
-                e => Err(e.into())
-            }
+                e => Err(e.into()),
+            },
         }
     }
 
@@ -1115,8 +1237,10 @@ pub mod uninstall {
             let mut buf = Vec::new();
 
             match &self {
-                Keg::Formula(formula) => info_formula(&mut buf, &formula.upstream, Some(formula)).unwrap(),
-                Keg::Cask(cask) => info_cask(&mut buf, &cask.upstream, Some(cask)).unwrap()
+                Keg::Formula(formula) => {
+                    info_formula(&mut buf, &formula.upstream, Some(formula)).unwrap()
+                }
+                Keg::Cask(cask) => info_cask(&mut buf, &cask.upstream, Some(cask)).unwrap(),
             };
 
             let preview = String::from_utf8(buf).unwrap();
@@ -1127,9 +1251,9 @@ pub mod uninstall {
 }
 
 fn select_skim<T, I>(items: I, header: &str, multi: bool) -> anyhow::Result<Vec<T>>
-    where
-        T: SkimItem + Clone,
-        I: IntoIterator<Item=T>
+where
+    T: SkimItem + Clone,
+    I: IntoIterator<Item = T>,
 {
     let options = SkimOptionsBuilder::default()
         .multi(multi)
@@ -1139,7 +1263,6 @@ fn select_skim<T, I>(items: I, header: &str, multi: bool) -> anyhow::Result<Vec<
         .build()?;
 
     let (tx, rx): (SkimItemSender, SkimItemReceiver) = unbounded();
-
 
     for item in items.into_iter() {
         tx.send(Arc::new(item))?;
@@ -1163,6 +1286,10 @@ fn select_skim<T, I>(items: I, header: &str, multi: bool) -> anyhow::Result<Vec<
 
             Ok(selected)
         }
-        None => Ok(Vec::new())
+        None => Ok(Vec::new()),
     }
+}
+
+fn kegs_list() {
+
 }
